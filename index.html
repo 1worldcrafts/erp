@@ -159,6 +159,32 @@
         return snap.docs.map(d=>({id:d.id,...d.data()}));
       } catch(e){console.error('Enquiries load failed',e);return[];}
     };
+    window.fbSaveEnquiryNotification = async function(enqData) {
+      // Save a notification for owner/purchase/planning
+      try {
+        const notifyUsers=['prayas','kuldeep','priyanshu','amit'];
+        const batch=db.batch();
+        notifyUsers.forEach(uid=>{
+          const ref=db.collection('notifications').doc();
+          batch.set(ref,{toUser:uid,type:'new_enquiry',enqId:enqData.id||'',client:enqData.client||'',project:enqData.project||'',addedBy:window.CU||'unknown',addedByName:(window.USERS&&window.USERS[window.CU||''])?window.USERS[window.CU||''].name:window.CU,timestamp:firebase.firestore.FieldValue.serverTimestamp(),read:false,date:new Date().toISOString().split('T')[0]});
+        });
+        await batch.commit();
+        return true;
+      } catch(e){console.error('Notification save failed',e);return false;}
+    };
+    window.fbLoadMyNotifications = async function(userId) {
+      try {
+        const snap=await db.collection('notifications').where('toUser','==',userId).where('read','==',false).orderBy('timestamp','desc').limit(20).get();
+        return snap.docs.map(d=>({id:d.id,...d.data()}));
+      } catch(e){console.error('Notification load failed',e);return[];}
+    };
+    window.fbMarkNotificationsRead = async function(ids) {
+      try {
+        const batch=db.batch();
+        ids.forEach(id=>batch.update(db.collection('notifications').doc(id),{read:true}));
+        await batch.commit();
+      } catch(e){console.error('Mark read failed',e);}
+    };
     console.log('🔥 Firebase connected — worldcrafts-erp');
   } catch(e) {
     console.error('Firebase init failed', e);
@@ -380,6 +406,24 @@ const SITES=[
 ];
 
 const CASH_CATEGORIES=['Food','Room Rent','Advance','2nd Salary','Transportation','Consumables','Tool Repair/Purchase','Petrol/Diesel','Office Stationery','Site Stationery','Labour Welfare','Medical','Miscellaneous'];
+
+// Department codes — for tasks not tied to a specific project
+const DEPT_CODES=['SALES','PURCHASE','EXECUTION','ACCOUNTS','PLANNING','HR','ADMIN'];
+
+// Custom project codes — editable, persisted in localStorage
+let CUSTOM_CODES=[];
+try{const s=localStorage.getItem('1wc_custom_codes');if(s)CUSTOM_CODES=JSON.parse(s);}catch(e){}
+
+function saveCustomCodes(){try{localStorage.setItem('1wc_custom_codes',JSON.stringify(CUSTOM_CODES));}catch(e){}}
+
+// Returns all project code options for a select — project codes + dept codes + custom
+function getProjectCodeOptions(includeBlank=true){
+  const siteOpts=SITES.map(s=>`<option value="${s.code}">${s.code} – ${s.name}</option>`).join('');
+  const deptOpts=DEPT_CODES.map(d=>`<option value="${d}">🏢 ${d}</option>`).join('');
+  const customOpts=CUSTOM_CODES.map(c=>`<option value="${c.code}">${c.code}${c.name?' – '+c.name:''}</option>`).join('');
+  const blank=includeBlank?'<option value="">— Select Code —</option>':'';
+  return blank+siteOpts+'<optgroup label="── Department ──">'+deptOpts+'</optgroup>'+(customOpts?'<optgroup label="── Custom ──">'+customOpts+'</optgroup>':'');
+}
 
 const SOPs={
   prayas:[
@@ -628,32 +672,47 @@ function initApp(){
   // show alert badge for owner
   const ab=document.getElementById('alert-badge');
   if(CU==='prayas'){ab.style.display='flex';}else{ab.style.display='none';}
-  // Load delegated tasks from Firebase then show dashboard
-  if(window.fbLoadDelegatedTasks){
-    window.fbLoadDelegatedTasks().then(cloudTasks=>{
-      if(cloudTasks&&cloudTasks.length>0){
-        // Merge cloud tasks into DELEGATED_TASKS (cloud wins)
-        cloudTasks.forEach(ct=>{
-          const idx=DELEGATED_TASKS.findIndex(t=>t.id===ct.id);
-          if(idx>=0){DELEGATED_TASKS[idx]=ct;}else{DELEGATED_TASKS.push(ct);}
-        });
-      }
-      const myDelegated=DELEGATED_TASKS.filter(t=>t.to===CU&&!t.done);
-      const tb=document.getElementById('task-badge');
-      if(myDelegated.length>0){tb.style.display='flex';document.getElementById('task-count').textContent=myDelegated.length;}else{tb.style.display='none';}
-      showPage('dashboard');
-    }).catch(()=>{
-      const myDelegated=DELEGATED_TASKS.filter(t=>t.to===CU&&!t.done);
-      const tb=document.getElementById('task-badge');
-      if(myDelegated.length>0){tb.style.display='flex';document.getElementById('task-count').textContent=myDelegated.length;}else{tb.style.display='none';}
-      showPage('dashboard');
-    });
-  } else {
+  // Load delegated tasks and notifications from Firebase then show dashboard
+  window.ENQUIRY_NOTIFICATIONS=[];
+  async function loadAndShow(){
+    // 1. Load delegated tasks
+    if(window.fbLoadDelegatedTasks){
+      try{
+        const cloudTasks=await window.fbLoadDelegatedTasks();
+        if(cloudTasks&&cloudTasks.length>0){
+          cloudTasks.forEach(ct=>{
+            const idx=DELEGATED_TASKS.findIndex(t=>t.id===ct.id);
+            if(idx>=0){DELEGATED_TASKS[idx]=ct;}else{DELEGATED_TASKS.push(ct);}
+          });
+        }
+      }catch(e){}
+    }
+    // 2. Load notifications for owner/purchase/planning
+    const notifyRoles=['prayas','kuldeep','priyanshu','amit'];
+    if(notifyRoles.includes(CU)&&window.fbLoadMyNotifications){
+      try{
+        const notifs=await window.fbLoadMyNotifications(CU);
+        window.ENQUIRY_NOTIFICATIONS=notifs||[];
+        const alertBadge=document.getElementById('alert-badge');
+        if(alertBadge&&notifs.length>0){
+          alertBadge.style.display='flex';
+          const ac=document.getElementById('alert-count');
+          if(ac) ac.textContent=notifs.length;
+        }
+      }catch(e){}
+    }
+    // 3. Update task badge
     const myDelegated=DELEGATED_TASKS.filter(t=>t.to===CU&&!t.done);
     const tb=document.getElementById('task-badge');
     if(myDelegated.length>0){tb.style.display='flex';document.getElementById('task-count').textContent=myDelegated.length;}else{tb.style.display='none';}
     showPage('dashboard');
   }
+  loadAndShow().catch(()=>{
+    const myDelegated=DELEGATED_TASKS.filter(t=>t.to===CU&&!t.done);
+    const tb=document.getElementById('task-badge');
+    if(myDelegated.length>0){tb.style.display='flex';document.getElementById('task-count').textContent=myDelegated.length;}else{tb.style.display='none';}
+    showPage('dashboard');
+  });
 }
 function buildSidebar(){
   const u=USERS[CU];
@@ -917,6 +976,10 @@ function pageTasks(){
       <div class="task-check${taskChecked[i]?' done':''}" onclick="toggleTask(${i})"></div>
       <div class="task-body">
         <div class="task-title${taskChecked[i]?' done':''}">${t.text}</div>
+        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+          ${t.priority==='high'?'<span class="tag tag-red" style="font-size:10px">HIGH</span>':t.priority==='med'?'<span class="tag tag-orange" style="font-size:10px">MED</span>':'<span class="tag" style="font-size:10px;background:var(--navy3)">LOW</span>'}
+          ${t.code?`<span class="tag tag-blue" style="font-size:10px">${t.code}</span>`:''}
+        </div>
         <div class="task-meta">
           <span class="task-priority p-${t.priority}">${prioL[t.priority]}</span>
           ${!taskChecked[i]?`<button class="btn-secondary btn-xs" style="margin-left:8px" onclick="eodIncompleteReason('sop-${i}')">Cannot Complete</button>`:''}
@@ -931,16 +994,81 @@ function pageTasks(){
   <div class="card">
     <div class="card-title">${u.hinglish?'Naya Kaam Add Karo':'Add Ad-hoc Task'}</div>
     <div class="eod-form">
-      <div class="form-row" style="display:flex;gap:8px">
-        <input id="adhoc-task" placeholder="${u.hinglish?'Naya kaam type karo...':'Type new task...'}" style="flex:1;padding:10px 12px;background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none" />
-        <button class="btn-secondary" onclick="addAdhocTask()">+ Add</button>
+      <div class="form-row">
+        <input id="adhoc-task" placeholder="${u.hinglish?'Naya kaam type karo...':'Type new task...'}" style="width:100%;padding:10px 12px;background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none" />
+      </div>
+      <div class="row2">
+        <div class="form-row"><label>Priority</label>
+          <select id="adhoc-pri" style="background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;width:100%">
+            <option value="high">🔴 High</option>
+            <option value="med" selected>🟡 Medium</option>
+            <option value="low">🟢 Low</option>
+          </select>
+        </div>
+        <div class="form-row"><label>Project / Dept Code</label>
+          <select id="adhoc-code" style="background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;width:100%">
+            <option value="">— None —</option>
+            ${getProjectCodeOptions(false)}
+          </select>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn-secondary" onclick="addAdhocTask()">+ Add Task</button>
+        <button class="btn-secondary" style="background:transparent;border-color:var(--text2)" onclick="openManageCodes()">⚙️ Manage Codes</button>
       </div>
     </div>
   </div>`;
 }
 function toggleTask(i){taskChecked[i]=!taskChecked[i];showPage('tasks');}
 function markAllDone(){(SOPs[CU]||[]).forEach((_,i)=>taskChecked[i]=true);showPage('tasks');showToast('✅ All tasks marked complete!','success');}
-function addAdhocTask(){const v=document.getElementById('adhoc-task').value.trim();if(!v)return;if(!SOPs[CU])SOPs[CU]=[];SOPs[CU].push({text:v,priority:'med'});showPage('tasks');showToast('Task added!','success');}
+function addAdhocTask(){
+  const v=document.getElementById('adhoc-task').value.trim();
+  if(!v){showToast('Write the task first','error');return;}
+  const pri=document.getElementById('adhoc-pri')?.value||'med';
+  const code=document.getElementById('adhoc-code')?.value||'';
+  if(!SOPs[CU])SOPs[CU]=[];
+  SOPs[CU].push({text:v,priority:pri,code,adhoc:true});
+  showPage('tasks');
+  showToast('✅ Task added!','success');
+}
+function openManageCodes(){
+  const list=CUSTOM_CODES.map((c,i)=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--navy2);border-radius:8px;margin-bottom:6px">
+      <span style="font-size:13px;font-weight:600">${c.code}${c.name?' <span style="color:var(--text2);font-weight:400">– '+c.name+'</span>':''}</span>
+      <button onclick="deleteCustomCode(${i})" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:16px">✕</button>
+    </div>`).join('') || '<div style="color:var(--text2);font-size:13px;padding:8px">No custom codes yet</div>';
+  openModal('⚙️ Manage Project Codes',`
+  <div style="margin-bottom:16px">
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Built-in project codes and department codes cannot be deleted. Add custom codes below.</div>
+    <div id="custom-code-list">${list}</div>
+  </div>
+  <div style="border-top:1px solid var(--border);padding-top:16px">
+    <div style="font-weight:600;margin-bottom:10px">Add New Code</div>
+    <div class="row2">
+      <div class="form-row"><label>Code (short)</label><input id="new-code-key" placeholder="e.g. CORP-001" style="background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;width:100%"/></div>
+      <div class="form-row"><label>Name (optional)</label><input id="new-code-name" placeholder="e.g. Corporate HQ" style="background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;width:100%"/></div>
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="addCustomCode()">+ Add Code</button></div>
+  </div>`);
+}
+function addCustomCode(){
+  const key=document.getElementById('new-code-key')?.value?.trim().toUpperCase();
+  const name=document.getElementById('new-code-name')?.value?.trim();
+  if(!key){showToast('Enter a code','error');return;}
+  if(CUSTOM_CODES.find(c=>c.code===key)){showToast('Code already exists','error');return;}
+  CUSTOM_CODES.push({code:key,name:name||''});
+  saveCustomCodes();
+  showToast('✅ Code added: '+key,'success');
+  openManageCodes();
+}
+function deleteCustomCode(i){
+  const c=CUSTOM_CODES[i];
+  if(!c)return;
+  CUSTOM_CODES.splice(i,1);
+  saveCustomCodes();
+  showToast('Deleted: '+c.code,'info');
+  openManageCodes();
+}
 
 // ======================== EOD PAGE ========================
 function pageEOD(){
@@ -1339,7 +1467,7 @@ function pageAccounts(){
         <div class="row2">
           <div class="form-row"><label>Date</label><input id="cash-date" type="date" value="${new Date().toISOString().split('T')[0]}" /></div>
           <div class="form-row"><label>Project Code ⚠️</label>
-            <select id="cash-project"><option value="">— Select Project —</option>${SITES.map(s=>`<option>${s.code} – ${s.name}</option>`).join('')}<option>OVERHEAD – Office/Admin</option></select>
+            <select id="cash-project">${getProjectCodeOptions()}</select>
           </div>
         </div>
         <div class="row2">
@@ -1359,7 +1487,7 @@ function pageAccounts(){
         <div class="row2">
           <div class="form-row"><label>Date</label><input id="petty-date" type="date" value="${new Date().toISOString().split('T')[0]}" /></div>
           <div class="form-row"><label>Project Code ⚠️</label>
-            <select id="petty-project"><option value="">— Select Project —</option>${SITES.map(s=>`<option>${s.code}</option>`).join('')}<option>OVERHEAD</option></select>
+            <select id="petty-project">${getProjectCodeOptions()}</select>
           </div>
         </div>
         <div class="row2">
@@ -1409,7 +1537,7 @@ function pageAccounts(){
           <select><option>Receipt (Customer Payment)</option><option>Payment (Vendor)</option><option>Expense (Cash)</option><option>Invoice Raised</option><option>Salary / Labour</option><option>Contractor Payment</option></select>
         </div>
         <div class="form-row"><label>Project Code ⚠️</label>
-          <select id="proj-code-sel"><option value="">— Select Project Code —</option>${SITES.map(s=>`<option value="${s.code}">${s.code} – ${s.name}</option>`).join('')}<option value="OVERHEAD">OVERHEAD – Office/Admin</option></select>
+          <select id="proj-code-sel">${getProjectCodeOptions()}</select>
         </div>
       </div>
       <div class="row2">
@@ -1523,7 +1651,7 @@ function pagePurchase(){
       <div class="warn-box">Raise a PR first. PO can only be raised after PR is approved by Owner for amounts >₹50,000.</div>
       <div class="row2">
         <div class="form-row"><label>Site / Project Code ⚠️</label>
-          <select id="pr-site">${SITES.map(s=>`<option value="${s.code}">${s.code} – ${s.name}</option>`).join('')}</select>
+          <select id="pr-site">${getProjectCodeOptions(false)}</select>
         </div>
         <div class="form-row"><label>Required By Date</label><input id="pr-date" type="date" /></div>
       </div>
@@ -2387,6 +2515,26 @@ function pageAlerts(){
       <button class="btn-secondary btn-xs" onclick="showToast('Alert marked resolved','success')">✓ Resolve</button>
     </div>`).join('')}
   </div>
+  <div class="card" style="margin-bottom:12px">
+    <div class="card-title">📩 New Enquiry Notifications</div>
+    <div id="enq-notif-list">
+      ${(window.ENQUIRY_NOTIFICATIONS&&window.ENQUIRY_NOTIFICATIONS.length>0)?
+        window.ENQUIRY_NOTIFICATIONS.map(n=>`
+        <div class="alert-item" style="border-left-color:var(--blue);margin-bottom:8px">
+          <div class="alert-body">
+            <h4>🆕 New Enquiry: ${n.client||'—'}</h4>
+            <p>${n.project?'Project: '+n.project:''} ${n.addedByName?'· Added by: '+n.addedByName:''}</p>
+            <p style="font-size:11px;color:var(--text2)">${n.date||''}</p>
+          </div>
+          <button class="btn-secondary btn-xs" onclick="markEnquiryNotifRead('${n.id}',this)">✓ Read</button>
+        </div>`).join('')
+        :'<div style="color:var(--text2);font-size:13px;padding:8px 0">No new enquiry notifications.</div>'}
+    </div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn-secondary btn-xs" onclick="refreshEnquiryNotifs()">🔄 Refresh</button>
+      ${(window.ENQUIRY_NOTIFICATIONS&&window.ENQUIRY_NOTIFICATIONS.length>0)?`<button class="btn-primary btn-xs" onclick="markAllEnquiryNotifsRead()">✓ Mark All Read</button>`:''}
+    </div>
+  </div>
   <div class="card">
     <div class="card-title">📋 Team EOD Reports (Live from Cloud)</div>
     <div id="eod-cloud-list"><div style="color:var(--text2);font-size:13px">Click refresh to load...</div></div>
@@ -2397,12 +2545,51 @@ function pageAlerts(){
   // Auto-load EODs for owner
   setTimeout(loadOwnerEODView, 300);
 }
+async function refreshEnquiryNotifs(){
+  if(!window.fbLoadMyNotifications){showToast('Offline','info');return;}
+  const notifs=await window.fbLoadMyNotifications(CU);
+  window.ENQUIRY_NOTIFICATIONS=notifs||[];
+  const el=document.getElementById('enq-notif-list');
+  if(el){
+    el.innerHTML=notifs.length>0?notifs.map(n=>`
+      <div class="alert-item" style="border-left-color:var(--blue);margin-bottom:8px">
+        <div class="alert-body">
+          <h4>🆕 New Enquiry: ${n.client||'—'}</h4>
+          <p>${n.project?'Project: '+n.project:''} ${n.addedByName?'· Added by: '+n.addedByName:''}</p>
+          <p style="font-size:11px;color:var(--text2)">${n.date||''}</p>
+        </div>
+        <button class="btn-secondary btn-xs" onclick="markEnquiryNotifRead('${n.id}',this)">✓ Read</button>
+      </div>`).join('')
+    :'<div style="color:var(--text2);font-size:13px;padding:8px 0">No new enquiry notifications.</div>';
+  }
+  showToast('Refreshed','success');
+}
+async function markEnquiryNotifRead(id,btn){
+  if(window.fbMarkNotificationsRead) await window.fbMarkNotificationsRead([id]);
+  window.ENQUIRY_NOTIFICATIONS=window.ENQUIRY_NOTIFICATIONS.filter(n=>n.id!==id);
+  if(btn) btn.closest('.alert-item')?.remove();
+  // Update badge
+  const ab=document.getElementById('alert-badge');
+  const count=window.ENQUIRY_NOTIFICATIONS.length;
+  if(ab){const ac=document.getElementById('alert-count');if(ac)ac.textContent=count;if(count===0)ab.style.display='none';}
+  showToast('Marked read','success');
+}
+async function markAllEnquiryNotifsRead(){
+  const ids=window.ENQUIRY_NOTIFICATIONS.map(n=>n.id);
+  if(ids.length&&window.fbMarkNotificationsRead) await window.fbMarkNotificationsRead(ids);
+  window.ENQUIRY_NOTIFICATIONS=[];
+  const ab=document.getElementById('alert-badge');
+  if(ab){ab.style.display='none';}
+  refreshEnquiryNotifs();
+  showToast('All notifications cleared','success');
+}
 function pageQuotation(){
-  let qtMode='simple',qtItems=[{desc:'',qty:1,unit:'Lot',rate:0}];
+  window.qtMode='simple';
+  window.qtItems=[{desc:'',qty:1,unit:'Lot',rate:0}];
   let qNo=generateQuoteNo();
-  function renderQt(){
-    const isSupply=qtMode==='supply';
-    const total=qtItems.reduce((s,i)=>s+i.qty*i.rate,0);
+  window.renderQt=function(){
+    const isSupply=window.qtMode==='supply';
+    const total=window.qtItems.reduce((s,i)=>s+i.qty*i.rate,0);
     const gst=total*0.18;
     document.getElementById('qt-body').innerHTML=`
     <div class="row2" style="margin-bottom:12px">
@@ -2417,20 +2604,20 @@ function pageQuotation(){
     <table class="data-table" style="font-size:13px;margin-bottom:8px">
       <thead><tr><th>#</th><th>Description</th><th>Unit</th><th>Qty</th><th>Rate (₹)</th>${isSupply?'<th>Supply (₹)</th><th>Install (₹)</th>':''}<th>Amount (₹)</th><th></th></tr></thead>
       <tbody>
-        ${qtItems.map((it,idx)=>`
+        ${window.qtItems.map((it,idx)=>`
         <tr>
           <td>${idx+1}</td>
-          <td><input style="width:100%;border:none;background:transparent" value="${it.desc}" oninput="qtItems[${idx}].desc=this.value"/></td>
-          <td><input style="width:60px;border:none;background:transparent" value="${it.unit}" oninput="qtItems[${idx}].unit=this.value"/></td>
-          <td><input type="number" style="width:60px;border:none;background:transparent" value="${it.qty}" oninput="qtItems[${idx}].qty=+this.value;renderQt()"/></td>
-          <td><input type="number" style="width:80px;border:none;background:transparent" value="${it.rate}" oninput="qtItems[${idx}].rate=+this.value;renderQt()"/></td>
+          <td><input style="width:100%;border:none;background:transparent" value="${it.desc}" oninput="window.qtItems[${idx}].desc=this.value"/></td>
+          <td><input style="width:60px;border:none;background:transparent" value="${it.unit}" oninput="window.qtItems[${idx}].unit=this.value"/></td>
+          <td><input type="number" style="width:60px;border:none;background:transparent" value="${it.qty}" oninput="window.qtItems[${idx}].qty=+this.value;window.renderQt()"/></td>
+          <td><input type="number" style="width:80px;border:none;background:transparent" value="${it.rate}" oninput="window.qtItems[${idx}].rate=+this.value;window.renderQt()"/></td>
           ${isSupply?`<td style="font-weight:700;color:var(--blue)">₹${(it.qty*it.rate*0.6).toFixed(0)}</td><td style="font-weight:700;color:var(--purple)">₹${(it.qty*it.rate*0.4).toFixed(0)}</td>`:''}
           <td style="font-weight:700;color:var(--navy)">₹${(it.qty*it.rate).toFixed(0)}</td>
-          <td><button onclick="qtItems.splice(${idx},1);renderQt()" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:16px">✕</button></td>
+          <td><button onclick="window.qtItems.splice(${idx},1);window.renderQt()" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:16px">✕</button></td>
         </tr>`).join('')}
       </tbody>
     </table>
-    <button class="btn-secondary btn-xs" onclick="qtItems.push({desc:'',qty:1,unit:'Lot',rate:0});renderQt()">+ Add Row</button>
+    <button class="btn-secondary btn-xs" onclick="window.qtItems.push({desc:'',qty:1,unit:'Lot',rate:0});window.renderQt()">+ Add Row</button>
     <div style="text-align:right;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <div style="margin-bottom:4px">Subtotal: <strong>₹${total.toLocaleString('en-IN')}</strong></div>
       <div style="margin-bottom:4px">GST @18%: <strong>₹${gst.toLocaleString('en-IN')}</strong></div>
@@ -2446,19 +2633,19 @@ function pageQuotation(){
       <button class="btn-secondary" onclick="showToast('PDF generated','success')">📄 Download PDF</button>
       <button class="btn-secondary" onclick="showToast('Sent via email','success')">📧 Send to Client</button>
     </div>`;
-  }
+  };
   c.innerHTML=`
   <div class="page-title">📝 Quotation Builder</div>
   <div class="card" style="margin-bottom:12px">
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <span style="font-weight:600">Format:</span>
-      <button onclick="qtMode='simple';renderQt()" id="qt-simple" class="btn-primary btn-xs">Simple Rate</button>
-      <button onclick="qtMode='supply';renderQt()" id="qt-supply" class="btn-secondary btn-xs">Supply + Installation Split</button>
+      <button onclick="window.qtMode='simple';window.renderQt()" id="qt-simple" class="btn-primary btn-xs">Simple Rate</button>
+      <button onclick="window.qtMode='supply';window.renderQt()" id="qt-supply" class="btn-secondary btn-xs">Supply + Installation Split</button>
       <span style="color:var(--text2);font-size:12px;margin-left:8px">Quote No: <strong>${qNo}</strong></span>
     </div>
   </div>
   <div class="card"><div id="qt-body"></div></div>`;
-  renderQt();
+  window.renderQt();
 }
 // ===================== HELPER FUNCTIONS =====================
 function switchTab(el,groupClass,targetId){
@@ -2600,10 +2787,23 @@ async function saveEnquiry(){
   const client=document.getElementById('enq-client')?.value||document.querySelector('#modal-body input')?.value||'';
   const project=document.getElementById('enq-project')?.value||'';
   const value=document.getElementById('enq-value')?.value||'';
+  const contact=document.getElementById('enq-contact')?.value||'';
+  const source=document.getElementById('enq-source')?.value||'';
+  if(!client){showToast('⚠️ Client name required','error');return;}
   showToast('⏳ Logging enquiry...','info');
-  const ok=window.fbSaveEnquiry?await window.fbSaveEnquiry({client,project,estimatedValue:+value||0}):false;
-  if(ok){showToast('✅ Enquiry logged! Team notified.','success');closeModal();}
-  else{showToast('✅ Enquiry logged (local)','success');closeModal();}
+  const enqData={client,project,contact,source,estimatedValue:+value||0};
+  const ok=window.fbSaveEnquiry?await window.fbSaveEnquiry(enqData):false;
+  if(ok){
+    // Send notifications to owner, purchase and planning
+    if(window.fbSaveEnquiryNotification) window.fbSaveEnquiryNotification({...enqData,id:'ENQ-'+Date.now()});
+    showToast('✅ Enquiry logged! Owner, Purchase & Planning notified.','success');
+    closeModal();
+    // Reload pipeline if currently on sales page
+    if(window.currentPage==='sales'){loadSalesPipelineFromCloud();}
+  } else {
+    showToast('✅ Enquiry logged (local — offline)','success');
+    closeModal();
+  }
 }
 
 async function saveStageUpdate(quoteId){
