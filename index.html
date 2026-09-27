@@ -548,13 +548,13 @@ const NAV={
 function doLogin(){
   const sel=document.getElementById('user-select').value;
   if(!sel){showToast('⚠️ Please select your profile','info');return;}
-  CU=sel;
+  CU=sel; window.CU=sel;
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='block';
   initApp();
 }
 function doLogout(){
-  CU=null;taskChecked={};
+  CU=null; window.CU=null; taskChecked={};
   document.getElementById('app').style.display='none';
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('user-select').value='';
