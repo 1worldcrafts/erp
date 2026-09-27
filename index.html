@@ -75,17 +75,6 @@
       } catch(e) { console.error('Cash entry failed', e); return false; }
     };
 
-    window.fbSaveSalesEntry = async function(entry) {
-      try {
-        await db.collection('sales_pipeline').doc(entry.id).set({
-          ...entry,
-          updatedBy: window.CU,
-          timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        return true;
-      } catch(e) { console.error('Sales save failed', e); return false; }
-    };
-
     window.fbLoadEODs = async function() {
       try {
         const snap = await db.collection('eod_reports').orderBy('timestamp','desc').get();
@@ -144,6 +133,31 @@
         const snap=await db.collection('cash_entries').orderBy('timestamp','desc').get();
         return snap.docs.map(d=>({id:d.id,...d.data()}));
       } catch(e){console.error('Cash load failed',e);return[];}
+    };
+    window.fbLoadDelegatedTasks = async function() {
+      try {
+        const snap=await db.collection('delegated_tasks').orderBy('timestamp','desc').get();
+        return snap.docs.map(d=>({id:d.id,...d.data()}));
+      } catch(e){console.error('Delegated tasks load failed',e);return[];}
+    };
+    window.fbSaveRABill = async function(data) {
+      try {
+        const cu=window.CU||'unknown';
+        await db.collection('ra_bills').doc(data.billNo).set({...data,createdBy:cu,creatorName:(window.USERS&&window.USERS[cu])?window.USERS[cu].name:cu,timestamp:firebase.firestore.FieldValue.serverTimestamp()});
+        return true;
+      } catch(e){console.error('RA Bill save failed',e);return false;}
+    };
+    window.fbLoadSalesPipeline = async function() {
+      try {
+        const snap=await db.collection('sales_enquiries').orderBy('timestamp','desc').get();
+        return snap.docs.map(d=>({id:d.id,...d.data()}));
+      } catch(e){console.error('Sales pipeline load failed',e);return[];}
+    };
+    window.fbLoadEnquiries = async function() {
+      try {
+        const snap=await db.collection('sales_enquiries').orderBy('timestamp','desc').get();
+        return snap.docs.map(d=>({id:d.id,...d.data()}));
+      } catch(e){console.error('Enquiries load failed',e);return[];}
     };
     console.log('🔥 Firebase connected — worldcrafts-erp');
   } catch(e) {
@@ -313,10 +327,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <div class="topbar-title" id="page-title">Dashboard</div>
         <div class="topbar-right">
           <div class="topbar-date" id="topbar-date"></div>
-          <span id="alert-badge" style="display:none;cursor:pointer;display:flex;align-items:center;gap:4px" onclick="showPage('alerts')">
+          <span id="alert-badge" style="cursor:pointer;display:flex;align-items:center;gap:4px" onclick="showPage('alerts')">
             <span style="font-size:18px">🔔</span><span class="badge" id="alert-count">3</span>
           </span>
-          <span id="task-badge" style="display:none;cursor:pointer;display:flex;align-items:center;gap:4px" onclick="showPage('tasks')">
+          <span id="task-badge" style="cursor:pointer;display:none;align-items:center;gap:4px" onclick="showPage('tasks')">
             <span style="font-size:18px">✅</span><span class="badge" id="task-count">0</span>
           </span>
         </div>
@@ -614,11 +628,32 @@ function initApp(){
   // show alert badge for owner
   const ab=document.getElementById('alert-badge');
   if(CU==='prayas'){ab.style.display='flex';}else{ab.style.display='none';}
-  // show task badge for delegated tasks
-  const myDelegated=DELEGATED_TASKS.filter(t=>t.to===CU&&!t.done);
-  const tb=document.getElementById('task-badge');
-  if(myDelegated.length>0){tb.style.display='flex';document.getElementById('task-count').textContent=myDelegated.length;}else{tb.style.display='none';}
-  showPage('dashboard');
+  // Load delegated tasks from Firebase then show dashboard
+  if(window.fbLoadDelegatedTasks){
+    window.fbLoadDelegatedTasks().then(cloudTasks=>{
+      if(cloudTasks&&cloudTasks.length>0){
+        // Merge cloud tasks into DELEGATED_TASKS (cloud wins)
+        cloudTasks.forEach(ct=>{
+          const idx=DELEGATED_TASKS.findIndex(t=>t.id===ct.id);
+          if(idx>=0){DELEGATED_TASKS[idx]=ct;}else{DELEGATED_TASKS.push(ct);}
+        });
+      }
+      const myDelegated=DELEGATED_TASKS.filter(t=>t.to===CU&&!t.done);
+      const tb=document.getElementById('task-badge');
+      if(myDelegated.length>0){tb.style.display='flex';document.getElementById('task-count').textContent=myDelegated.length;}else{tb.style.display='none';}
+      showPage('dashboard');
+    }).catch(()=>{
+      const myDelegated=DELEGATED_TASKS.filter(t=>t.to===CU&&!t.done);
+      const tb=document.getElementById('task-badge');
+      if(myDelegated.length>0){tb.style.display='flex';document.getElementById('task-count').textContent=myDelegated.length;}else{tb.style.display='none';}
+      showPage('dashboard');
+    });
+  } else {
+    const myDelegated=DELEGATED_TASKS.filter(t=>t.to===CU&&!t.done);
+    const tb=document.getElementById('task-badge');
+    if(myDelegated.length>0){tb.style.display='flex';document.getElementById('task-count').textContent=myDelegated.length;}else{tb.style.display='none';}
+    showPage('dashboard');
+  }
 }
 function buildSidebar(){
   const u=USERS[CU];
@@ -652,12 +687,12 @@ function showPage(id){
     case 'tasks': content.innerHTML=pageTasks();break;
     case 'eod': content.innerHTML=pageEOD();break;
     case 'sites': content.innerHTML=pageSites();break;
-    case 'sales': content.innerHTML=pageSales();break;
+    case 'sales': content.innerHTML=pageSales(); loadSalesPipelineFromCloud(); break;
     case 'accounts': content.innerHTML=pageAccounts();break;
     case 'purchase': content.innerHTML=pagePurchase();break;
     case 'team-status': pageTeamStatus();break;
     case 'alerts': pageAlerts();break;
-    case 'eod-owner': pageOwnerEODs();break;
+    case 'eod-owner': pageOwnerEODs().catch(e=>{c.innerHTML='<div class="card"><p style="color:var(--red)">Failed to load EOD reports. Check connection.</p></div>';console.error(e);});break;
     case 'delegate': pageDelegate();break;
     case 'vendor-compare': pageVendorCompare();break;
     case 'rfq': pageRFQ();break;
@@ -712,7 +747,7 @@ function pageDashboard(){
     <div class="card">
       <div class="card-title">Sites at a Glance</div>
       <div class="sites-list">${SITES.map(s=>`
-        <div class="site-row" onclick="showPage('sites')">
+        <div class="site-row" onclick="openSiteModal('${s.id}')">
           <div class="site-status" style="background:${s.health==='green'?'var(--green)':s.health==='yellow'?'var(--gold)':s.health==='red'?'var(--red)':'#666'}"></div>
           <div class="site-info"><div class="site-name">${s.name}</div><div class="site-people">${s.people}</div></div>
           <div style="text-align:right"><div class="site-badge">${s.status.toUpperCase()}</div>
@@ -796,6 +831,27 @@ function getSiteMySite(){
     </div></div>`;
 }
 
+async function submitDelegateTask(){
+  const to=document.getElementById('del-to').value;
+  const task=document.getElementById('del-task').value.trim();
+  const pri=document.getElementById('del-pri').value;
+  const due=document.getElementById('del-due').value;
+  if(!task){showToast('⚠️ Enter task description','error');return;}
+  if(!to){showToast('⚠️ Select person to assign','error');return;}
+  const newTask={id:'dt'+Date.now(),from:'prayas',to,task,priority:pri,date:due,done:false};
+  DELEGATED_TASKS.unshift(newTask);
+  showToast('⏳ Saving to cloud...','info');
+  if(window.fbSaveDelegatedTask){
+    const ok=await window.fbSaveDelegatedTask(newTask);
+    if(ok){showToast('✅ Task assigned to '+USERS[to]?.name+' & saved to cloud','success');}
+    else{showToast('✅ Task assigned to '+USERS[to]?.name+' (local only)','success');}
+  } else {
+    showToast('✅ Task assigned to '+USERS[to]?.name,'success');
+  }
+  document.getElementById('del-task').value='';
+  if(typeof renderDelegateList==='function') renderDelegateList();
+}
+
 async function markDelegatedDone(id){
   const t=DELEGATED_TASKS.find(x=>x.id===id);
   if(t){
@@ -825,8 +881,13 @@ function eodIncompleteReason(id){
 }
 function submitIncompleteReason(id){
   const sel=document.querySelector('input[name="inc-reason"]:checked');
-  const reasons=['Didn\'t get time – will do tomorrow','No response – following up tomorrow','Delegated – awaiting response','Custom reason'];
-  showToast('📝 Reason recorded. Owner notified.','info');
+  if(!sel){showToast('Select a reason','error');return;}
+  const reasons=['Didn\'t get time – will do tomorrow','No response from other end – will follow up tomorrow','Delegated to someone – awaiting their response','Custom reason'];
+  const custom=document.querySelector('#inc-custom-text')?.value||'';
+  const reason=sel.value==='3'?custom:reasons[+sel.value];
+  const t=DELEGATED_TASKS.find(x=>x.id===id);
+  if(t){t.incompReason=reason;if(window.fbSaveDelegatedTask)window.fbSaveDelegatedTask(t);}
+  showToast('📝 Reason recorded','info');
   closeModal();
 }
 
@@ -903,8 +964,8 @@ function pageEOD(){
       <textarea rows="2" placeholder="${hin?'Important message...':'Important escalation...'}" id="eod-owner"></textarea></div>
     ${incomplete.length?`<div class="warn-box">
       ⚠️ <strong>${incomplete.length} SOP task${incomplete.length>1?'s':''} incomplete</strong> – you must give a reason for each:
-      ${incomplete.map((_,i)=>{const realIdx=sop.findIndex((_,j)=>!taskChecked[j]&&j>=i);return`<div style="margin-top:8px;padding:8px;background:rgba(0,0,0,.2);border-radius:6px">
-        <div style="font-size:12px;font-weight:600;margin-bottom:6px">${sop[i]?.text||'Task'}</div>
+      ${incomplete.map((t,i)=>{return`<div style="margin-top:8px;padding:8px;background:rgba(0,0,0,.2);border-radius:6px">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">${incomplete[i]?.text||'Task'}</div>
         <select style="width:100%;padding:8px;background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px" id="inc-${i}">
           <option value="a">Didn't get time – will do tomorrow</option>
           <option value="b">No response from other end – will follow up tomorrow</option>
@@ -920,6 +981,14 @@ function pageEOD(){
         <input type="file" id="eod-file" multiple accept="image/*,video/*,.pdf,.doc,.docx,.xlsx" onchange="handleFiles(this,'eod-uploaded')">
       </div>
       <div class="uploaded-files" id="eod-uploaded"></div>
+    </div>
+    <div class="form-row"><label>Today's Mood</label>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px">
+        <label style="cursor:pointer"><input type="radio" name="eod-mood" value="great"> 😄 Great</label>
+        <label style="cursor:pointer"><input type="radio" name="eod-mood" value="good" checked> 😊 Good</label>
+        <label style="cursor:pointer"><input type="radio" name="eod-mood" value="okay"> 😐 Okay</label>
+        <label style="cursor:pointer"><input type="radio" name="eod-mood" value="tough"> 😔 Tough</label>
+      </div>
     </div>
     <div class="btn-row">
       <button class="btn-primary" onclick="submitEOD()">📤 ${hin?'EOD Submit Karo':'Submit EOD Report'}</button>
@@ -941,8 +1010,9 @@ async function submitEOD(){
   const tomorrow=document.getElementById('eod-tomorrow')?.value||'';
   const issues=document.getElementById('eod-issues')?.value||'';
   const mood=document.querySelector('input[name="eod-mood"]:checked')?.value||'';
+  const escalation=document.getElementById('eod-owner')?.value||'';
   if(!summary){showToast('⚠️ Please fill today\'s work summary','info');return;}
-  const data={summary,tomorrow,issues,mood};
+  const data={summary,tomorrow,issues,mood,escalation};
   showToast('⏳ Submitting EOD...','info');
   if(window.fbSaveEOD){
     const ok=await window.fbSaveEOD(data);
@@ -1065,6 +1135,7 @@ function pageSales(){
         <button class="btn-primary btn-xs" onclick="showPage('quotation')">Edit Quote</button>
       </div>
     </div>`).join('')}
+    <div id="cloud-enquiries-container" style="margin-top:10px"></div>
   </div>
   <div class="sales-tab" id="sales-quoted" style="display:none">
     <div class="info-box">All registered quotations – total value and status</div>
@@ -1106,20 +1177,45 @@ function pageSales(){
   </div>`;
 }
 
+async function loadSalesPipelineFromCloud(){
+  const container=document.getElementById('cloud-enquiries-container');
+  if(!container||!window.fbLoadEnquiries)return;
+  container.innerHTML='<div style="color:var(--text2);font-size:12px;padding:8px">⏳ Loading new enquiries from cloud…</div>';
+  try{
+    const items=await window.fbLoadEnquiries();
+    if(!items||items.length===0){container.innerHTML='<div style="color:var(--text2);font-size:12px;padding:8px;text-align:center">No new cloud enquiries yet</div>';return;}
+    container.innerHTML=`<div style="font-size:13px;font-weight:700;color:var(--gold);margin:12px 0 8px">☁️ Cloud Enquiries (${items.length})</div>`+
+    items.map(e=>`
+    <div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="font-size:13px;font-weight:700">${e.client||'Unknown Client'}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">${e.scope||e.description||''}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:4px">By: ${e.userName||e.addedBy||'—'} · ${e.date||''}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:14px;font-weight:700;color:var(--green)">${e.value?'₹'+Number(e.value).toLocaleString('en-IN'):'Value TBD'}</div>
+          <div class="tag tag-blue" style="margin-top:4px">${e.stage||'Enquiry'}</div>
+        </div>
+      </div>
+    </div>`).join('');
+  }catch(err){container.innerHTML='<div style="color:var(--text2);font-size:12px;padding:8px">Could not load cloud enquiries</div>';}
+}
+
 function openNewEnquiry(){
   openModal('New Enquiry',`
   <div class="eod-form">
     <div class="row2">
-      <div class="form-row"><label>Client / Company</label><input placeholder="Company or person name" /></div>
+      <div class="form-row"><label>Client / Company</label><input id="enq-client" placeholder="Company or person name" /></div>
       <div class="form-row"><label>Contact Number</label><input type="tel" placeholder="+91..." /></div>
     </div>
     <div class="row2">
       <div class="form-row"><label>Location / City</label><input placeholder="Project location" /></div>
       <div class="form-row"><label>Quoting Deadline</label><input type="date" /></div>
     </div>
-    <div class="form-row"><label>Scope of Work</label><textarea rows="3" placeholder="HVAC, Plumbing, Cold Storage, AHU installation..."></textarea></div>
+    <div class="form-row"><label>Scope of Work</label><textarea id="enq-project" rows="3" placeholder="HVAC, Plumbing, Cold Storage, AHU installation..."></textarea></div>
     <div class="row2">
-      <div class="form-row"><label>Approx Value (₹)</label><input type="number" placeholder="Estimated project value" /></div>
+      <div class="form-row"><label>Approx Value (₹)</label><input id="enq-value" type="number" placeholder="Estimated project value" /></div>
       <div class="form-row"><label>Quote to be prepared by</label>
         <select><option>Vinay Arya (VA)</option><option>Prayas Balyan (PB)</option></select>
       </div>
@@ -1324,7 +1420,7 @@ function pageAccounts(){
       <div class="row2">
         <div class="form-row"><label>Date</label><input type="date" value="${new Date().toISOString().split('T')[0]}" /></div>
         <div class="form-row"><label>Category</label>
-          <select><option>—</option>${CASH_CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select>
+          <select id="acc-entry-category"><option>—</option>${CASH_CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select>
         </div>
       </div>
       <div class="form-row">
@@ -1346,7 +1442,7 @@ async function submitEntry(){
   const party=document.querySelectorAll('#acc-entry input[type=text], #acc-entry input:not([type])')[0]?.value||'';
   const desc=document.querySelector('#acc-entry textarea')?.value||'';
   const date=document.querySelector('#acc-entry input[type=date]')?.value||new Date().toISOString().split('T')[0];
-  const category=document.querySelectorAll('#acc-entry select')[1]?.value||'';
+  const category=document.getElementById('acc-entry-category')?.value||'';
   showToast('⏳ Saving...','info');
   const ok=window.fbSaveCashEntry?await window.fbSaveCashEntry({type:'financial',entryType,project:sel.value,amount:+amount,paidTo:party,desc,date,category}):false;
   if(ok){showToast('✅ Entry saved to cloud. Project: '+sel.value,'success');}
@@ -1758,7 +1854,7 @@ function pageAIFeedback(){
           <span class="tag tag-${s.status==='Implemented'?'green':s.status==='Approved'?'blue':'orange'}" style="font-size:10px">${s.status}</span>
         </div>
       </div>`).join('')}
-      <button class="btn-secondary" style="margin-top:10px;width:100%" onclick="openModal('Submit SOP Idea',\`<div class='eod-form'><div class='form-row'><label>Your Idea</label><textarea rows='3' placeholder='How to improve a process...'></textarea></div><div class='btn-row'><button class='btn-primary' onclick="showToast('Idea submitted!','success');closeModal()">Submit</button></div></div>\`)">+ Submit Idea</button>
+      <button class="btn-secondary" style="margin-top:10px;width:100%" onclick="openModal('Submit SOP Idea',`<div class='eod-form'><div class='form-row'><label>Your Idea</label><textarea rows='3' placeholder='How to improve a process...'></textarea></div><div class='btn-row'><button class='btn-primary' onclick='showToast(&quot;Idea submitted!&quot;,&quot;success&quot;);closeModal()'>Submit</button></div></div>`)">+ Submit Idea</button>
     </div>
   </div>
   <div class="card">
@@ -1823,7 +1919,7 @@ function pageExecution(){
       <div class="eod-form">
         <div class="row2">
           <div class="form-row"><label>Site</label><select>${SITES.filter(s=>s.status==='active').map(s=>`<option>${s.name}</option>`).join('')}</select></div>
-          <div class="form-row"><label>Date</label><input type="date" value="2026-09-27"/></div>
+          <div class="form-row"><label>Date</label><input type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
         </div>
         <div class="form-row"><label>Activity</label><input placeholder="e.g. Ducting installation 3rd floor"/></div>
         <div class="row2">
@@ -1892,10 +1988,10 @@ function pageAttendance(){
   <div class="page-title">📋 Attendance Register</div>
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-      <select style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2)">
+      <select id="att-site" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2)">
         ${SITES.filter(s=>s.status==='active').map(s=>`<option value="${s.code}">${s.name}</option>`).join('')}
       </select>
-      <input type="month" value="2026-09" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2)"/>
+      <input id="att-date" type="month" value="2026-09" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2)"/>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${Object.entries({P:'Present',A:'Absent',W:'Week Off',H:'Holiday',O:'OT Only',OT:'OT+'}).map(([k,v])=>`
         <span style="background:${statusColors[k]}22;color:${statusColors[k]};padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700">${k}=${v}</span>`).join('')}
@@ -1914,7 +2010,7 @@ function pageAttendance(){
           <th style="padding:8px 6px;text-align:right">Wages/Sal</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="attendance-body">
         ${emp.map(e=>{
           const a=att[e.id]||{};
           let pCount=0,aCount=0,otHrs=0;
@@ -1953,7 +2049,7 @@ function pageAttendance(){
         <tr><td>Fathe Mian</td><td>DMRC-TKD</td><td>Mon,Tue,Wed</td><td>LG Noida</td><td>Thu,Fri</td><td><button class="btn-secondary btn-xs" onclick="showToast('Assignment updated','success')">Edit</button></td></tr>
       </tbody>
     </table>
-    <button class="btn-primary btn-xs" style="margin-top:10px" onclick="openModal('Add Multi-Site Assignment',\`<div class='eod-form'><div class='row2'><div class='form-row'><label>Employee</label><select>${emp.map(e=>`<option>${e.name}</option>`).join('')}</select></div><div class='form-row'><label>From Date</label><input type='date'/></div></div><div class='row2'><div class='form-row'><label>Site 1</label><select>${SITES.filter(s=>s.status==='active').map(s=>`<option>${s.name}</option>`).join('')}</select></div><div class='form-row'><label>Site 2</label><select>${SITES.filter(s=>s.status==='active').map(s=>`<option>${s.name}</option>`).join('')}</select></div></div><div class='btn-row'><button class='btn-primary' onclick="showToast('Assignment saved','success');closeModal()">Save</button></div></div>\`)">+ Add Multi-Site</button>
+    <button class="btn-primary btn-xs" style="margin-top:10px" onclick="openModal('Add Multi-Site Assignment',`<div class='eod-form'><div class='row2'><div class='form-row'><label>Employee</label><select>${emp.map(e=>`<option>${e.name}</option>`).join('')}</select></div><div class='form-row'><label>From Date</label><input type='date'/></div></div><div class='row2'><div class='form-row'><label>Site 1</label><select>${SITES.filter(s=>s.status==='active').map(s=>`<option>${s.name}</option>`).join('')}</select></div><div class='form-row'><label>Site 2</label><select>${SITES.filter(s=>s.status==='active').map(s=>`<option>${s.name}</option>`).join('')}</select></div></div><div class='btn-row'><button class='btn-primary' onclick='showToast(&quot;Assignment saved&quot;,&quot;success&quot;);closeModal()'>Save</button></div></div>`)">+ Add Multi-Site</button>
   </div>
   <div class="btn-row">
     <button class="btn-primary" onclick="saveAttendance()">💾 Save Attendance</button>
@@ -1977,7 +2073,7 @@ function pageRABilling(){
       <div class="eod-form">
         <div class="row2">
           <div class="form-row"><label>Site / Project Code</label><select>${SITES.filter(s=>s.status==='active').map(s=>`<option value="${s.code}">${s.name}</option>`).join('')}</select></div>
-          <div class="form-row"><label>Date</label><input type="date" value="2026-09-27"/></div>
+          <div class="form-row"><label>Date</label><input type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
         </div>
         <div class="form-row"><label>Issued By (Store)</label><input placeholder="Rohtash Kumar"/></div>
         <table class="data-table" style="margin-top:10px;font-size:13px">
@@ -2009,28 +2105,23 @@ function pageRABilling(){
       <div style="font-weight:700;margin-bottom:10px">RA Bill Preparation</div>
       <div class="eod-form">
         <div class="row2">
-          <div class="form-row"><label>Site</label><select>${SITES.filter(s=>s.status==='active').map(s=>`<option>${s.name}</option>`).join('')}</select></div>
-          <div class="form-row"><label>RA Bill No</label><input value="RA-04"/></div>
+          <div class="form-row"><label>Site</label><select id="ra-site">${SITES.filter(s=>s.status==='active').map(s=>`<option>${s.name}</option>`).join('')}</select></div>
+          <div class="form-row"><label>RA Bill No</label><input id="ra-bill-no" value="RA-04"/></div>
         </div>
         <div class="row2">
-          <div class="form-row"><label>Period From</label><input type="date" value="2026-09-01"/></div>
-          <div class="form-row"><label>Period To</label><input type="date" value="2026-09-27"/></div>
+          <div class="form-row"><label>Period From</label><input id="ra-from" type="date" value="2026-09-01"/></div>
+          <div class="form-row"><label>Period To</label><input id="ra-to" type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
         </div>
-        <div class="form-row"><label>Link MIRs</label>
-          <select multiple style="height:80px">
-            <option selected>MIR-2609-001 (₹2.4L)</option>
-            <option selected>MIR-2609-002 (₹1.1L)</option>
-          </select>
+        <div class="form-row"><label>MIR Reference / Notes</label><input id="ra-mir-ref" placeholder="MIR-2609-001, MIR-2609-002"/></div>
+        <div class="row2">
+          <div class="form-row"><label>Labour Component (₹)</label><input id="ra-labour" type="number" placeholder="850000"/></div>
+          <div class="form-row"><label>Contractor Component (₹)</label><input id="ra-contractor" type="number" placeholder="420000"/></div>
         </div>
         <div class="row2">
-          <div class="form-row"><label>Labour Component (₹)</label><input type="number" placeholder="850000"/></div>
-          <div class="form-row"><label>Contractor Component (₹)</label><input type="number" placeholder="420000"/></div>
+          <div class="form-row"><label>Retention % (usually 5-10%)</label><input id="ra-retention" type="number" value="10"/></div>
+          <div class="form-row"><label>GST %</label><input id="ra-gst" type="number" value="18"/></div>
         </div>
-        <div class="row2">
-          <div class="form-row"><label>Retention % (usually 5-10%)</label><input type="number" value="10"/></div>
-          <div class="form-row"><label>GST %</label><input type="number" value="18"/></div>
-        </div>
-        <div class="btn-row"><button class="btn-primary" onclick="showToast('✅ RA Bill RA-04 generated','success')">Generate RA Bill</button></div>
+        <div class="btn-row"><button class="btn-primary" onclick="generateRABill()">Generate RA Bill</button></div>
       </div>
     </div>
   </div>
@@ -2091,7 +2182,7 @@ function pageRABilling(){
       <div class="eod-form">
         <div class="form-row"><label>RA Bill Reference</label><input value="RA-03"/></div>
         <div class="form-row"><label>Client PM Name</label><input placeholder="Mr. Rajesh Kumar, DMRC"/></div>
-        <div class="form-row"><label>Submission Date</label><input type="date" value="2026-09-27"/></div>
+        <div class="form-row"><label>Submission Date</label><input type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
         <div class="form-row"><label>Documents to Attach</label>
           <div style="display:flex;flex-direction:column;gap:6px">
             ${['RA Bill (Signed)','BOQ Extract','MIR Copies','Lab our Bills','Contractor Bills'].map(d=>`
@@ -2122,7 +2213,7 @@ function pageDelegate(){
       <div class="row2">
         <div class="form-row"><label>Assign To</label>
           <select id="del-to">
-            ${Object.values(USERS).filter(u=>u.id!=='prayas').map(u=>`<option value="${u.id}">${u.name} (${u.role})</option>`).join('')}
+            ${Object.entries(USERS).filter(([k])=>k!=='prayas').map(([k,u])=>`<option value="${k}">${u.name} (${u.role})</option>`).join('')}
           </select>
         </div>
         <div class="form-row"><label>Priority</label>
@@ -2131,25 +2222,13 @@ function pageDelegate(){
       </div>
       <div class="form-row"><label>Task Description</label><textarea id="del-task" rows="3" placeholder="Describe the task clearly..."></textarea></div>
       <div class="row2">
-        <div class="form-row"><label>Due Date</label><input type="date" id="del-due" value="2026-09-28"/></div>
+        <div class="form-row"><label>Due Date</label><input type="date" id="del-due" value="${new Date(Date.now()+86400000).toISOString().split('T')[0]}"/></div>
         <div class="form-row"><label>Department Tag</label>
           <select id="del-dept"><option>Purchase</option><option>Sales</option><option>Accounts</option><option>Execution</option><option>Store</option><option>Planning</option><option>General</option></select>
         </div>
       </div>
       <div class="btn-row">
-        <button class="btn-primary" onclick="
-          const to=document.getElementById('del-to').value;
-          const task=document.getElementById('del-task').value;
-          const pri=document.getElementById('del-pri').value;
-          const due=document.getElementById('del-due').value;
-          if(!task){showToast('Enter task description','error');return;}
-          const newTask={id:'dt'+Date.now(),from:'prayas',to,task,priority:pri,date:due,done:false};
-          DELEGATED_TASKS.unshift(newTask);
-          if(window.fbSaveDelegatedTask) window.fbSaveDelegatedTask(newTask);
-          showToast('✅ Task delegated to '+USERS[to]?.name+' & saved to cloud','success');
-          document.getElementById('del-task').value='';
-          renderDelegateList();
-        ">📤 Delegate Task</button>
+        <button class="btn-primary" onclick="submitDelegateTask()">📤 Delegate Task</button>
       </div>
     </div>
   </div>
@@ -2172,7 +2251,7 @@ function pageDelegate(){
         </div>
         <div style="text-align:right">
           <span class="tag tag-${t.done?'green':'orange'}">${t.done?'✅ Done':'⏳ Pending'}</span>
-          ${!t.done?`<br><button class="btn-secondary btn-xs" style="margin-top:6px" onclick="DELEGATED_TASKS.find(x=>x.id==='${t.id}').done=true;renderDelegateList();showToast('Marked done','success')">Mark Done</button>`:''}
+          ${!t.done?`<br><button class="btn-secondary btn-xs" style="margin-top:6px" onclick="markDelegatedDone('${t.id}')">Mark Done</button>`:''}
         </div>
       </div>`).join('');
   };
@@ -2257,8 +2336,8 @@ function pageTeamStatus(){
   c.innerHTML=`
   <div class="page-title">👥 Team Status Overview</div>
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:16px">
-    ${Object.values(USERS).map(u=>{
-      const pending=DELEGATED_TASKS.filter(t=>t.to===u.id&&!t.done).length;
+    ${Object.entries(USERS).map(([k,u])=>{
+      const pending=DELEGATED_TASKS.filter(t=>t.to===k&&!t.done).length;
       return `<div class="card" style="border-top:4px solid ${u.color}">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <div style="width:40px;height:40px;border-radius:50%;background:${u.color};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">${u.initials}</div>
@@ -2272,10 +2351,7 @@ function pageTeamStatus(){
           ${pending>0?`<span class="tag tag-orange" style="font-size:11px">⏳ ${pending} task${pending>1?'s':''}</span>`:''}
           <span class="tag" style="font-size:11px;background:var(--bg2)">${u.dept}</span>
         </div>
-        ${CU==='prayas'?`<button class="btn-primary btn-xs" style="margin-top:10px;width:100%" onclick="
-          const name='${u.name}';
-          openModal('Delegate Task to '+name,\`<div class='eod-form'><div class='form-row'><label>Task</label><textarea id='quick-task' rows='3' placeholder='Task description...'></textarea></div><div class='form-row'><label>Priority</label><select id='quick-pri'><option value='high'>🔴 High</option><option value='medium' selected>🟡 Medium</option><option value='low'>🟢 Low</option></select></div><div class='form-row'><label>Due Date</label><input type='date' id='quick-due' value='2026-09-28'/></div><div class='btn-row'><button class='btn-primary' onclick="DELEGATED_TASKS.unshift({id:'dt'+Date.now(),from:'prayas',to:'${u.id}',task:document.getElementById('quick-task').value||'Task',priority:document.getElementById('quick-pri').value,date:document.getElementById('quick-due').value,done:false});showToast('Task delegated to ${u.name}','success');closeModal()">Delegate</button></div></div>\`);
-        ">➕ Delegate Task</button>`:''}
+        ${CU==='prayas'?`<button class="btn-primary btn-xs" style="margin-top:10px;width:100%" onclick="openQuickDelegate('${k}')">➕ Delegate Task</button>`:''}
       </div>`;
     }).join('')}
   </div>`;
@@ -2331,7 +2407,7 @@ function pageQuotation(){
     document.getElementById('qt-body').innerHTML=`
     <div class="row2" style="margin-bottom:12px">
       <div class="form-row"><label>Quote No</label><input value="${qNo}" style="font-weight:700"/></div>
-      <div class="form-row"><label>Date</label><input type="date" value="2026-09-27"/></div>
+      <div class="form-row"><label>Date</label><input type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
     </div>
     <div class="row2" style="margin-bottom:12px">
       <div class="form-row"><label>Client Name</label><input id="qt-client" placeholder="Client company"/></div>
@@ -2358,7 +2434,7 @@ function pageQuotation(){
     <div style="text-align:right;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <div style="margin-bottom:4px">Subtotal: <strong>₹${total.toLocaleString('en-IN')}</strong></div>
       <div style="margin-bottom:4px">GST @18%: <strong>₹${gst.toLocaleString('en-IN')}</strong></div>
-      <div style="font-size:18px;font-weight:900;color:var(--navy)">Grand Total: ₹${(total+gst).toLocaleString('en-IN')}</div>
+      <div style="font-size:18px;font-weight:900;color:var(--navy)">Grand Total: <span id="qt-grand-total">₹${(total+gst).toLocaleString('en-IN')}</span></div>
     </div>
     <div class="row2" style="margin-top:12px">
       <div class="form-row"><label>Validity</label><input value="30 days"/></div>
@@ -2438,7 +2514,7 @@ function openSiteModal(siteId){
   <div class="eod-form">
     <div class="row2">
       <div class="form-row"><label>Health Status</label>
-        <select onchange="site&&(SITES.find(s=>s.id==='${siteId}').health=this.value)">
+        <select onchange="(SITES.find(s=>s.id==='${siteId}').health=this.value)">
           <option value="green" ${site.health==='green'?'selected':''}>🟢 On Track</option>
           <option value="yellow" ${site.health==='yellow'?'selected':''}>🟡 Attention Needed</option>
           <option value="red" ${site.health==='red'?'selected':''}>🔴 Critical Issue</option>
@@ -2598,9 +2674,32 @@ async function saveContractorPayment(name,site){
   else{showToast('✅ Payment saved (local)','success');closeModal();}
 }
 
+async function generateRABill(){
+  const site=document.getElementById('ra-site')?.value||'';
+  const billNo=document.getElementById('ra-bill-no')?.value||('RA-'+Date.now());
+  const from=document.getElementById('ra-from')?.value||'';
+  const to=document.getElementById('ra-to')?.value||'';
+  const mirRef=document.getElementById('ra-mir-ref')?.value||'';
+  const labour=parseFloat(document.getElementById('ra-labour')?.value)||0;
+  const contractor=parseFloat(document.getElementById('ra-contractor')?.value)||0;
+  const retPct=parseFloat(document.getElementById('ra-retention')?.value)||10;
+  const gstPct=parseFloat(document.getElementById('ra-gst')?.value)||18;
+  if(!site||!from||!to){showToast('⚠️ Fill site and period dates','error');return;}
+  const gross=labour+contractor;
+  const retention=gross*(retPct/100);
+  const net=gross-retention;
+  const gst=net*(gstPct/100);
+  const total=net+gst;
+  const data={billNo,site,periodFrom:from,periodTo:to,mirRef,labourComponent:labour,contractorComponent:contractor,gross,retentionPct:retPct,retention,netAmount:net,gstPct,gstAmount:gst,totalPayable:total,status:'Generated',generatedDate:new Date().toISOString().split('T')[0]};
+  showToast('⏳ Saving RA Bill...','info');
+  const ok=window.fbSaveRABill?await window.fbSaveRABill(data):false;
+  if(ok){showToast(`✅ RA Bill ${billNo} saved to cloud! Total: ₹${(total/100000).toFixed(2)}L`,'success');}
+  else{showToast(`✅ RA Bill ${billNo} generated — Gross:₹${(gross/1000).toFixed(0)}K | Net:₹${(net/1000).toFixed(0)}K | Total:₹${(total/1000).toFixed(0)}K`,'success');}
+}
+
 async function saveQuotation(qNo){
   const client=document.getElementById('qt-client')?.value||'';
-  const total=document.querySelector('#qt-body [style*="Grand Total"]')?.textContent||'';
+  const total=document.getElementById('qt-grand-total')?.textContent||'';
   showToast('⏳ Saving quotation...','info');
   const ok=window.fbSaveQuotation?await window.fbSaveQuotation({quoteNo:qNo,client,grandTotal:total,savedAt:new Date().toISOString()}):false;
   if(ok){showToast('✅ Quotation '+qNo+' saved to cloud!','success');}
@@ -2738,12 +2837,36 @@ function updateBadges(){
   const taskBadge=document.getElementById('task-badge');
   if(alertBadge){
     const count=DELEGATED_TASKS.filter(t=>t.incompReason).length+4;
-    alertBadge.textContent=count;alertBadge.style.display=count>0?'inline':'none';
+    document.getElementById('alert-count').textContent=count;alertBadge.style.display=count>0?'flex':'none';
   }
   if(taskBadge){
     const count=DELEGATED_TASKS.filter(t=>t.to===CU&&!t.done).length;
-    taskBadge.textContent=count;taskBadge.style.display=count>0?'inline':'none';
+    document.getElementById('task-count').textContent=count;taskBadge.style.display=count>0?'flex':'none';
   }
+}
+function openQuickDelegate(userKey){
+  const u=USERS[userKey];
+  if(!u){return;}
+  openModal('Quick Delegate to '+u.name,`
+  <div class="eod-form">
+    <div class="form-row"><label>Task</label><textarea id="qd-task" rows="3" placeholder="Describe the task..."></textarea></div>
+    <div class="form-row"><label>Priority</label>
+      <select id="qd-pri"><option value="high">🔴 High</option><option value="med" selected>🟡 Medium</option><option value="low">🟢 Low</option></select>
+    </div>
+    <div class="form-row"><label>Due Date</label><input type="date" id="qd-due" value="${new Date(Date.now()+86400000).toISOString().split('T')[0]}"/></div>
+    <div class="btn-row"><button class="btn-primary" onclick="submitQuickDelegate('${userKey}')">📤 Assign Task</button></div>
+  </div>`);
+}
+async function submitQuickDelegate(userKey){
+  const task=document.getElementById('qd-task')?.value?.trim();
+  const pri=document.getElementById('qd-pri')?.value||'med';
+  const due=document.getElementById('qd-due')?.value||new Date().toISOString().split('T')[0];
+  if(!task){showToast('Enter task description','error');return;}
+  const newTask={id:'dt'+Date.now(),from:'prayas',to:userKey,task,priority:pri,date:due,done:false};
+  DELEGATED_TASKS.unshift(newTask);
+  if(window.fbSaveDelegatedTask){const ok=await window.fbSaveDelegatedTask(newTask);if(ok){showToast('✅ Task assigned to '+USERS[userKey]?.name+' & saved to cloud','success');}else{showToast('✅ Task assigned (local)','success');}}
+  else{showToast('✅ Task assigned to '+USERS[userKey]?.name,'success');}
+  closeModal();
 }
 // Init
 document.addEventListener('DOMContentLoaded',()=>{
