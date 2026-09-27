@@ -24,10 +24,12 @@
 
     window.fbSaveEOD = async function(data) {
       try {
+        const cu = window.CU || 'unknown';
+        const userName = (window.USERS && window.USERS[cu]) ? window.USERS[cu].name : cu;
         await db.collection('eod_reports').add({
           ...data,
-          user: window.CU,
-          userName: window.USERS[window.CU]?.name,
+          user: cu,
+          userName: userName,
           timestamp: firebase.firestore.FieldValue.serverTimestamp(),
           date: new Date().toISOString().split('T')[0]
         });
@@ -37,10 +39,12 @@
 
     window.fbSaveSiteUpdate = async function(siteId, updateText, health) {
       try {
+        const cu = window.CU || 'unknown';
+        const userName = (window.USERS && window.USERS[cu]) ? window.USERS[cu].name : cu;
         await db.collection('site_updates').add({
           siteId, updateText, health,
-          user: window.CU,
-          userName: window.USERS[window.CU]?.name,
+          user: cu,
+          userName: userName,
           timestamp: firebase.firestore.FieldValue.serverTimestamp(),
           date: new Date().toISOString().split('T')[0]
         });
@@ -60,9 +64,10 @@
 
     window.fbSaveCashEntry = async function(entry) {
       try {
+        const cu = window.CU || 'unknown';
         await db.collection('cash_entries').add({
           ...entry,
-          user: window.CU,
+          user: cu,
           timestamp: firebase.firestore.FieldValue.serverTimestamp(),
           date: new Date().toISOString().split('T')[0]
         });
