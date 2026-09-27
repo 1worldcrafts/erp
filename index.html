@@ -465,6 +465,7 @@ const NAV={
     {id:'dashboard',icon:'🏠',label:'Dashboard'},
     {id:'team-status',icon:'👥',label:'Team Status'},
     {id:'alerts',icon:'🔔',label:'Alerts & Reports'},
+    {id:'eod-owner',icon:'📋',label:'EOD Reports'},
     {id:'delegate',icon:'📌',label:'Delegate Tasks'},
     {section:'Modules'},
     {id:'sites',icon:'🏗️',label:'All Sites'},
@@ -596,7 +597,7 @@ function showPage(id){
   window.c=document.getElementById('page-content');
   sidebarOpen=false;
   document.getElementById('sidebar').classList.remove('open');
-  const titles={dashboard:'Dashboard',tasks:USERS[CU]?.hinglish?'Aaj Ka Kaam':'My Tasks (SOP)',eod:'EOD Report',sites:'Site Updates',sales:'Sales Pipeline',accounts:'Accounts',purchase:'Purchase','team-status':'Team Overview',alerts:'Alerts & Reports',delegate:'Delegate Tasks','vendor-compare':'Vendor Comparison',rfq:'RFQ Generator','project-costing':'Project Costing','ai-feedback':'AI Suggestions & Feedback',execution:'Execution Timeline',attendance:'Attendance','ra-billing':'RA Billing',quotation:'Quotation Generator',planning:'Planning'};
+  const titles={dashboard:'Dashboard',tasks:USERS[CU]?.hinglish?'Aaj Ka Kaam':'My Tasks (SOP)',eod:'EOD Report',sites:'Site Updates',sales:'Sales Pipeline',accounts:'Accounts',purchase:'Purchase','team-status':'Team Overview',alerts:'Alerts & Reports','eod-owner':'📋 EOD Reports — Full Team',delegate:'Delegate Tasks','vendor-compare':'Vendor Comparison',rfq:'RFQ Generator','project-costing':'Project Costing','ai-feedback':'AI Suggestions & Feedback',execution:'Execution Timeline',attendance:'Attendance','ra-billing':'RA Billing',quotation:'Quotation Generator',planning:'Planning'};
   document.getElementById('page-title').textContent=titles[id]||id;
   const content=document.getElementById('page-content');
   // Clear first so pages using c.innerHTML directly render fresh
@@ -611,6 +612,7 @@ function showPage(id){
     case 'purchase': content.innerHTML=pagePurchase();break;
     case 'team-status': pageTeamStatus();break;
     case 'alerts': pageAlerts();break;
+    case 'eod-owner': pageOwnerEODs();break;
     case 'delegate': pageDelegate();break;
     case 'vendor-compare': pageVendorCompare();break;
     case 'rfq': pageRFQ();break;
@@ -2442,6 +2444,113 @@ async function loadOwnerEODView(){
         ${r.issues?`<p style="color:var(--red);margin-top:4px">⚠️ ${r.issues}</p>`:''}
         ${r.mood?`<p style="margin-top:4px">Mood: ${r.mood}</p>`:''}
       </div>
+    </div>`).join('');
+}
+
+// ===================== OWNER EOD PAGE =====================
+async function pageOwnerEODs(){
+  c.innerHTML=`
+  <div class="page-title">📋 Team EOD Reports</div>
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+    <button class="btn-primary btn-sm" onclick="loadOwnerEODFull()">🔄 Refresh</button>
+    <select id="eod-filter-date" onchange="filterEODs()" style="padding:7px 12px;background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+      <option value="all">All Dates</option>
+      <option value="today" selected>Today</option>
+      <option value="yesterday">Yesterday</option>
+      <option value="week">This Week</option>
+    </select>
+    <select id="eod-filter-person" onchange="filterEODs()" style="padding:7px 12px;background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+      <option value="all">All People</option>
+      ${Object.entries(USERS).map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('')}
+    </select>
+    <span id="eod-count" style="font-size:12px;color:var(--text2)"></span>
+  </div>
+  <div id="eod-owner-list"><div style="text-align:center;padding:40px;color:var(--text2)">⏳ Loading EOD reports...</div></div>`;
+  window._allEODs=[];
+  await loadOwnerEODFull();
+}
+
+async function loadOwnerEODFull(){
+  const container=document.getElementById('eod-owner-list');
+  if(!container)return;
+  if(!window.fbLoadEODs){
+    container.innerHTML=`<div class="card" style="text-align:center;padding:32px;color:var(--text2)">⚠️ Firebase not connected. Refresh the page and try again.</div>`;
+    return;
+  }
+  container.innerHTML=`<div style="text-align:center;padding:40px;color:var(--text2)">⏳ Loading from cloud...</div>`;
+  const reports=await window.fbLoadEODs();
+  window._allEODs=reports;
+  filterEODs();
+}
+
+function filterEODs(){
+  const container=document.getElementById('eod-owner-list');
+  if(!container)return;
+  const dateF=document.getElementById('eod-filter-date')?.value||'all';
+  const personF=document.getElementById('eod-filter-person')?.value||'all';
+  const today=new Date().toISOString().split('T')[0];
+  const yesterday=new Date(Date.now()-86400000).toISOString().split('T')[0];
+  const weekAgo=new Date(Date.now()-7*86400000).toISOString().split('T')[0];
+  let reports=(window._allEODs||[]).filter(r=>{
+    if(personF!=='all'&&r.user!==personF)return false;
+    if(dateF==='today'&&r.date!==today)return false;
+    if(dateF==='yesterday'&&r.date!==yesterday)return false;
+    if(dateF==='week'&&r.date<weekAgo)return false;
+    return true;
+  });
+  const countEl=document.getElementById('eod-count');
+  if(countEl)countEl.textContent=`${reports.length} report${reports.length!==1?'s':''}`;
+  if(!reports.length){
+    container.innerHTML=`<div class="card" style="text-align:center;padding:40px">
+      <div style="font-size:40px;margin-bottom:12px">📭</div>
+      <div style="color:var(--text2);font-size:14px">No EOD reports found for this filter.<br>Ask team to submit their EOD from their dashboard.</div>
+    </div>`;
+    return;
+  }
+  const moodEmoji={great:'😄 Great',good:'😊 Good',okay:'😐 Okay',tough:'😔 Tough','':'—'};
+  const moodColor={great:'var(--green)',good:'var(--blue)',okay:'var(--gold)',tough:'var(--red)','':'var(--text2)'};
+  // Group by date
+  const byDate={};
+  reports.forEach(r=>{const d=r.date||'Unknown';if(!byDate[d])byDate[d]=[];byDate[d].push(r);});
+  const sortedDates=Object.keys(byDate).sort((a,b)=>b.localeCompare(a));
+  container.innerHTML=sortedDates.map(date=>`
+    <div style="margin-bottom:20px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:4px 0;border-bottom:1px solid var(--border)">
+        📅 ${date=== new Date().toISOString().split('T')[0]?'TODAY — '+date:date} · ${byDate[date].length} report${byDate[date].length!==1?'s':''}
+      </div>
+      ${byDate[date].map(r=>{
+        const mood=r.mood||'';
+        const initials=(r.userName||r.user||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+        const userColor=USERS[r.user]?.color||'var(--orange)';
+        return `
+        <div class="card" style="margin-bottom:10px;padding:16px">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+            <div style="width:38px;height:38px;border-radius:50%;background:${userColor};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0">${initials}</div>
+            <div style="flex:1">
+              <div style="font-weight:700;font-size:15px">${r.userName||r.user}</div>
+              <div style="font-size:11px;color:var(--text2)">${USERS[r.user]?.role||''} · ${USERS[r.user]?.dept||''}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:13px;font-weight:600;color:${moodColor[mood]}">${moodEmoji[mood]||mood}</div>
+              <div style="font-size:10px;color:var(--text2);margin-top:2px">${r.date||''}</div>
+            </div>
+          </div>
+          <div style="display:grid;gap:8px">
+            <div style="background:var(--navy2);border-radius:8px;padding:10px">
+              <div style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">✅ Today's Work</div>
+              <div style="font-size:13px;line-height:1.5">${r.summary||'—'}</div>
+            </div>
+            ${r.tomorrow?`<div style="background:var(--navy2);border-radius:8px;padding:10px">
+              <div style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">📅 Tomorrow's Plan</div>
+              <div style="font-size:13px;line-height:1.5">${r.tomorrow}</div>
+            </div>`:''}
+            ${r.issues?`<div style="background:rgba(231,76,60,0.1);border:1px solid rgba(231,76,60,0.3);border-radius:8px;padding:10px">
+              <div style="font-size:10px;color:var(--red);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">⚠️ Blockers / Issues</div>
+              <div style="font-size:13px;line-height:1.5;color:var(--red)">${r.issues}</div>
+            </div>`:''}
+          </div>
+        </div>`;
+      }).join('')}
     </div>`).join('');
 }
 
