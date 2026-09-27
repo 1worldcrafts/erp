@@ -1854,7 +1854,7 @@ function pageAIFeedback(){
           <span class="tag tag-${s.status==='Implemented'?'green':s.status==='Approved'?'blue':'orange'}" style="font-size:10px">${s.status}</span>
         </div>
       </div>`).join('')}
-      <button class="btn-secondary" style="margin-top:10px;width:100%" onclick="openModal('Submit SOP Idea',`<div class='eod-form'><div class='form-row'><label>Your Idea</label><textarea rows='3' placeholder='How to improve a process...'></textarea></div><div class='btn-row'><button class='btn-primary' onclick='showToast(&quot;Idea submitted!&quot;,&quot;success&quot;);closeModal()'>Submit</button></div></div>`)">+ Submit Idea</button>
+      <button class="btn-secondary" style="margin-top:10px;width:100%" onclick="openSubmitIdeaModal()">+ Submit Idea</button>
     </div>
   </div>
   <div class="card">
@@ -2049,7 +2049,7 @@ function pageAttendance(){
         <tr><td>Fathe Mian</td><td>DMRC-TKD</td><td>Mon,Tue,Wed</td><td>LG Noida</td><td>Thu,Fri</td><td><button class="btn-secondary btn-xs" onclick="showToast('Assignment updated','success')">Edit</button></td></tr>
       </tbody>
     </table>
-    <button class="btn-primary btn-xs" style="margin-top:10px" onclick="openModal('Add Multi-Site Assignment',`<div class='eod-form'><div class='row2'><div class='form-row'><label>Employee</label><select>${emp.map(e=>`<option>${e.name}</option>`).join('')}</select></div><div class='form-row'><label>From Date</label><input type='date'/></div></div><div class='row2'><div class='form-row'><label>Site 1</label><select>${SITES.filter(s=>s.status==='active').map(s=>`<option>${s.name}</option>`).join('')}</select></div><div class='form-row'><label>Site 2</label><select>${SITES.filter(s=>s.status==='active').map(s=>`<option>${s.name}</option>`).join('')}</select></div></div><div class='btn-row'><button class='btn-primary' onclick='showToast(&quot;Assignment saved&quot;,&quot;success&quot;);closeModal()'>Save</button></div></div>`)">+ Add Multi-Site</button>
+    <button class="btn-primary btn-xs" style="margin-top:10px" onclick="openMultiSiteModal()">+ Add Multi-Site</button>
   </div>
   <div class="btn-row">
     <button class="btn-primary" onclick="saveAttendance()">💾 Save Attendance</button>
@@ -2082,7 +2082,7 @@ function pageRABilling(){
             <tr><td>1</td><td><input style="width:100%;border:none;background:transparent"/></td><td><input style="width:60px;border:none;background:transparent" placeholder="Rft"/></td><td><input type="number" style="width:60px;border:none;background:transparent"/></td><td><input type="number" style="width:70px;border:none;background:transparent"/></td><td style="color:var(--blue)">₹0</td><td><button onclick="this.closest('tr').remove()" style="border:none;background:none;color:var(--red);cursor:pointer">✕</button></td></tr>
           </tbody>
         </table>
-        <button class="btn-secondary btn-xs" style="margin-top:8px" onclick="document.getElementById('mir-tbody').insertAdjacentHTML('beforeend',\`<tr><td>${document.querySelectorAll('#mir-tbody tr').length+1}</td><td><input style='width:100%;border:none;background:transparent'/></td><td><input style='width:60px;border:none;background:transparent'/></td><td><input type='number' style='width:60px;border:none;background:transparent'/></td><td><input type='number' style='width:70px;border:none;background:transparent'/></td><td>₹0</td><td><button onclick='this.closest(&quot;tr&quot;).remove()' style='border:none;background:none;color:var(--red);cursor:pointer'>✕</button></td></tr>\`)">+ Add Row</button>
+        <button class="btn-secondary btn-xs" style="margin-top:8px" onclick="addMIRRow()">+ Add Row</button>
         <div class="btn-row" style="margin-top:12px">
           <button class="btn-primary" onclick="showToast('✅ MIR saved — MIR-2609-001','success')">Save MIR</button>
           <button class="btn-secondary" onclick="showToast('MIR printed','success')">🖨️ Print</button>
@@ -2843,6 +2843,57 @@ function updateBadges(){
     const count=DELEGATED_TASKS.filter(t=>t.to===CU&&!t.done).length;
     document.getElementById('task-count').textContent=count;taskBadge.style.display=count>0?'flex':'none';
   }
+}
+function openSubmitIdeaModal(){
+  openModal('Submit SOP Idea',`
+  <div class="eod-form">
+    <div class="form-row"><label>Your Idea / Suggestion</label><textarea id="idea-text" rows="4" placeholder="How can we improve a process, tool, or workflow?"></textarea></div>
+    <div class="form-row"><label>Category</label>
+      <select id="idea-cat"><option>Process Improvement</option><option>Safety</option><option>Cost Saving</option><option>Tools / Equipment</option><option>Communication</option><option>Other</option></select>
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="submitIdea()">📤 Submit Idea</button></div>
+  </div>`);
+}
+function submitIdea(){
+  const text=document.getElementById('idea-text')?.value?.trim();
+  if(!text){showToast('Write your idea first','error');return;}
+  showToast('✅ Idea submitted! Owner will review it.','success');
+  closeModal();
+}
+function openMultiSiteModal(){
+  const siteOpts=SITES.filter(s=>s.status==='active').map(s=>`<option>${s.name}</option>`).join('');
+  openModal('Add Multi-Site Assignment',`
+  <div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Employee</label><input id="ms-emp" placeholder="Employee name"/></div>
+      <div class="form-row"><label>From Date</label><input type="date" id="ms-from" value="${new Date().toISOString().split('T')[0]}"/></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Site 1</label><select id="ms-site1">${siteOpts}</select></div>
+      <div class="form-row"><label>Site 2</label><select id="ms-site2">${siteOpts}</select></div>
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveMultiSite()">💾 Save Assignment</button></div>
+  </div>`);
+}
+function saveMultiSite(){
+  const emp=document.getElementById('ms-emp')?.value?.trim();
+  if(!emp){showToast('Enter employee name','error');return;}
+  showToast('✅ Multi-site assignment saved','success');
+  closeModal();
+}
+function addMIRRow(){
+  const tbody=document.getElementById('mir-tbody');
+  if(!tbody)return;
+  const n=tbody.querySelectorAll('tr').length+1;
+  tbody.insertAdjacentHTML('beforeend',`<tr>
+    <td>${n}</td>
+    <td><input style="width:100%;border:none;background:transparent"/></td>
+    <td><input style="width:60px;border:none;background:transparent" placeholder="Rft"/></td>
+    <td><input type="number" style="width:60px;border:none;background:transparent"/></td>
+    <td><input type="number" style="width:70px;border:none;background:transparent"/></td>
+    <td style="color:var(--blue)">₹0</td>
+    <td><button onclick="this.closest('tr').remove()" style="border:none;background:none;color:var(--red);cursor:pointer">✕</button></td>
+  </tr>`);
 }
 function openQuickDelegate(userKey){
   const u=USERS[userKey];
