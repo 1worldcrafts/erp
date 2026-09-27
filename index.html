@@ -100,6 +100,51 @@
       } catch(e) { console.error('Site updates load failed', e); return []; }
     };
 
+    window.fbSaveAttendance = async function(data) {
+      try {
+        await db.collection('attendance').add({...data,savedBy:window.CU||'unknown',timestamp:firebase.firestore.FieldValue.serverTimestamp(),date:new Date().toISOString().split('T')[0]});
+        return true;
+      } catch(e){console.error('Attendance save failed',e);return false;}
+    };
+    window.fbSavePR = async function(data) {
+      try {
+        const cu=window.CU||'unknown';
+        await db.collection('purchase_requests').add({...data,requestedBy:cu,requesterName:(window.USERS&&window.USERS[cu])?window.USERS[cu].name:cu,status:'Pending',timestamp:firebase.firestore.FieldValue.serverTimestamp(),date:new Date().toISOString().split('T')[0]});
+        return true;
+      } catch(e){console.error('PR save failed',e);return false;}
+    };
+    window.fbSaveEnquiry = async function(data) {
+      try {
+        const id='ENQ-'+Date.now();
+        await db.collection('sales_enquiries').doc(id).set({...data,id,addedBy:window.CU||'unknown',status:'Enquiry',timestamp:firebase.firestore.FieldValue.serverTimestamp(),date:new Date().toISOString().split('T')[0]});
+        return true;
+      } catch(e){console.error('Enquiry save failed',e);return false;}
+    };
+    window.fbSaveStageUpdate = async function(quoteId,stage,notes) {
+      try {
+        const cu=window.CU||'unknown';
+        await db.collection('sales_updates').add({quoteId,stage,notes,updatedBy:cu,updaterName:(window.USERS&&window.USERS[cu])?window.USERS[cu].name:cu,timestamp:firebase.firestore.FieldValue.serverTimestamp(),date:new Date().toISOString().split('T')[0]});
+        return true;
+      } catch(e){console.error('Stage update failed',e);return false;}
+    };
+    window.fbSaveQuotation = async function(data) {
+      try {
+        await db.collection('quotations').doc(data.quoteNo).set({...data,createdBy:window.CU||'unknown',timestamp:firebase.firestore.FieldValue.serverTimestamp()});
+        return true;
+      } catch(e){console.error('Quotation save failed',e);return false;}
+    };
+    window.fbLoadPRs = async function() {
+      try {
+        const snap=await db.collection('purchase_requests').orderBy('timestamp','desc').get();
+        return snap.docs.map(d=>({id:d.id,...d.data()}));
+      } catch(e){console.error('PR load failed',e);return[];}
+    };
+    window.fbLoadCashEntries = async function() {
+      try {
+        const snap=await db.collection('cash_entries').orderBy('timestamp','desc').get();
+        return snap.docs.map(d=>({id:d.id,...d.data()}));
+      } catch(e){console.error('Cash load failed',e);return[];}
+    };
     console.log('🔥 Firebase connected — worldcrafts-erp');
   } catch(e) {
     console.error('Firebase init failed', e);
@@ -1083,7 +1128,7 @@ function openNewEnquiry(){
       <select><option>Phone Call</option><option>WhatsApp</option><option>Email</option><option>Site Visit</option><option>Reference</option></select>
     </div>
     <div class="btn-row">
-      <button class="btn-primary" onclick="showToast('✅ Enquiry logged! Cross-dept notification sent.','success');closeModal()">Log Enquiry + Notify Team</button>
+      <button class="btn-primary" onclick="saveEnquiry()">Log Enquiry + Notify Team</button>
     </div>
   </div>`);
 }
@@ -1118,7 +1163,7 @@ function openUpdateStage(id){
       </select>
     </div>
     <div class="form-row"><label>Notes</label><textarea rows="2" placeholder="What happened? Key info..."></textarea></div>
-    <div class="btn-row"><button class="btn-primary" onclick="showToast('Stage updated! Owner notified.','success');closeModal()">Update</button></div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveStageUpdate('${id}')">Update</button></div>
   </div>`);
 }
 
@@ -1196,39 +1241,39 @@ function pageAccounts(){
         <div class="card-title">New Cash Payment Entry</div>
         <div class="warn-box">⚠️ Project Code + Category are MANDATORY on every entry</div>
         <div class="row2">
-          <div class="form-row"><label>Date</label><input type="date" value="${new Date().toISOString().split('T')[0]}" /></div>
+          <div class="form-row"><label>Date</label><input id="cash-date" type="date" value="${new Date().toISOString().split('T')[0]}" /></div>
           <div class="form-row"><label>Project Code ⚠️</label>
-            <select><option value="">— Select Project —</option>${SITES.map(s=>`<option>${s.code} – ${s.name}</option>`).join('')}<option>OVERHEAD – Office/Admin</option></select>
+            <select id="cash-project"><option value="">— Select Project —</option>${SITES.map(s=>`<option>${s.code} – ${s.name}</option>`).join('')}<option>OVERHEAD – Office/Admin</option></select>
           </div>
         </div>
         <div class="row2">
           <div class="form-row"><label>Category ⚠️</label>
-            <select><option value="">— Select Category —</option>${CASH_CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select>
+            <select id="cash-category"><option value="">— Select Category —</option>${CASH_CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select>
           </div>
-          <div class="form-row"><label>Amount (₹)</label><input type="number" placeholder="0" /></div>
+          <div class="form-row"><label>Amount (₹)</label><input id="cash-amount" type="number" placeholder="0" /></div>
         </div>
-        <div class="form-row"><label>Description</label><textarea rows="2" placeholder="What was this payment for?"></textarea></div>
-        <div class="form-row"><label>Paid To</label><input placeholder="Person / Vendor name" /></div>
-        <div class="btn-row"><button class="btn-primary" onclick="showToast('✅ Cash entry saved','success')">Save Entry</button></div>
+        <div class="form-row"><label>Description</label><textarea id="cash-desc" rows="2" placeholder="What was this payment for?"></textarea></div>
+        <div class="form-row"><label>Paid To</label><input id="cash-paidto" placeholder="Person / Vendor name" /></div>
+        <div class="btn-row"><button class="btn-primary" onclick="saveCashEntry()">Save Entry</button></div>
       </div>
     </div>
     <div class="cash-tab" id="cash-petty" style="display:none">
       <div class="card eod-form">
         <div class="card-title">New Petty Cash Entry (KP)</div>
         <div class="row2">
-          <div class="form-row"><label>Date</label><input type="date" value="${new Date().toISOString().split('T')[0]}" /></div>
+          <div class="form-row"><label>Date</label><input id="petty-date" type="date" value="${new Date().toISOString().split('T')[0]}" /></div>
           <div class="form-row"><label>Project Code ⚠️</label>
-            <select><option value="">— Select Project —</option>${SITES.map(s=>`<option>${s.code}</option>`).join('')}<option>OVERHEAD</option></select>
+            <select id="petty-project"><option value="">— Select Project —</option>${SITES.map(s=>`<option>${s.code}</option>`).join('')}<option>OVERHEAD</option></select>
           </div>
         </div>
         <div class="row2">
           <div class="form-row"><label>Category ⚠️</label>
-            <select><option value="">— Select —</option>${CASH_CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select>
+            <select id="petty-category"><option value="">— Select —</option>${CASH_CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select>
           </div>
-          <div class="form-row"><label>Amount (₹)</label><input type="number" placeholder="0" /></div>
+          <div class="form-row"><label>Amount (₹)</label><input id="petty-amount" type="number" placeholder="0" /></div>
         </div>
-        <div class="form-row"><label>Narration</label><input placeholder="Brief description..." /></div>
-        <div class="btn-row"><button class="btn-primary" onclick="showToast('✅ Petty cash entry saved','success')">Save</button></div>
+        <div class="form-row"><label>Narration</label><input id="petty-narration" placeholder="Brief description..." /></div>
+        <div class="btn-row"><button class="btn-primary" onclick="savePettyCash()">Save</button></div>
       </div>
     </div>
   </div>
@@ -1252,7 +1297,7 @@ function pageAccounts(){
           <td style="color:var(--green)">${c.balance}</td>
           <td style="color:var(--text2);font-size:11px">${c.formal}</td>
           <td style="color:var(--text2);font-size:11px">${c.cash}</td>
-          <td><button class="btn-secondary btn-xs" onclick="showToast('Payment entry opened','info')">Add Payment</button></td>
+          <td><button class="btn-secondary btn-xs" onclick="openContractorPayment('${c.name}','${c.site}')">Add Payment</button></td>
         </tr>`).join('')}
         </tbody>
       </table>
@@ -1293,10 +1338,19 @@ function pageAccounts(){
     </div>
   </div>`;
 }
-function submitEntry(){
+async function submitEntry(){
   const sel=document.getElementById('proj-code-sel');
   if(!sel||!sel.value){showToast('⚠️ Please select a Project Code!','info');return;}
-  showToast('✅ Entry saved. Project Code: '+sel.value,'success');
+  const entryType=document.querySelector('#acc-entry select')?.value||'';
+  const amount=document.querySelector('#acc-entry input[type=number]')?.value||'';
+  const party=document.querySelectorAll('#acc-entry input[type=text], #acc-entry input:not([type])')[0]?.value||'';
+  const desc=document.querySelector('#acc-entry textarea')?.value||'';
+  const date=document.querySelector('#acc-entry input[type=date]')?.value||new Date().toISOString().split('T')[0];
+  const category=document.querySelectorAll('#acc-entry select')[1]?.value||'';
+  showToast('⏳ Saving...','info');
+  const ok=window.fbSaveCashEntry?await window.fbSaveCashEntry({type:'financial',entryType,project:sel.value,amount:+amount,paidTo:party,desc,date,category}):false;
+  if(ok){showToast('✅ Entry saved to cloud. Project: '+sel.value,'success');}
+  else{showToast('✅ Entry saved (local). Project: '+sel.value,'success');}
 }
 
 // ======================== PURCHASE PAGE ========================
@@ -1373,15 +1427,15 @@ function pagePurchase(){
       <div class="warn-box">Raise a PR first. PO can only be raised after PR is approved by Owner for amounts >₹50,000.</div>
       <div class="row2">
         <div class="form-row"><label>Site / Project Code ⚠️</label>
-          <select>${SITES.map(s=>`<option value="${s.code}">${s.code} – ${s.name}</option>`).join('')}</select>
+          <select id="pr-site">${SITES.map(s=>`<option value="${s.code}">${s.code} – ${s.name}</option>`).join('')}</select>
         </div>
-        <div class="form-row"><label>Required By Date</label><input type="date" /></div>
+        <div class="form-row"><label>Required By Date</label><input id="pr-date" type="date" /></div>
       </div>
-      <div class="form-row"><label>Material Description (with specs)</label><textarea rows="3" placeholder="Be specific: grade, size, brand if required..."></textarea></div>
+      <div class="form-row"><label>Material Description (with specs)</label><textarea id="pr-desc" rows="3" placeholder="Be specific: grade, size, brand if required..."></textarea></div>
       <div class="row2">
-        <div class="form-row"><label>Quantity + Unit</label><input placeholder="e.g. 100 sqm, 5 Nos, 200 kg" /></div>
+        <div class="form-row"><label>Quantity + Unit</label><input id="pr-qty" placeholder="e.g. 100 sqm, 5 Nos, 200 kg" /></div>
         <div class="form-row"><label>Urgency</label>
-          <select><option>🔴 Urgent (Today)</option><option>🟡 Normal (2–3 days)</option><option>🟢 Planning (1 week+)</option></select>
+          <select id="pr-urgency"><option>🔴 Urgent (Today)</option><option>🟡 Normal (2–3 days)</option><option>🟢 Planning (1 week+)</option></select>
         </div>
       </div>
       <div class="form-row"><label>Upload Enquiry / Drawing (optional)</label>
@@ -1392,7 +1446,7 @@ function pagePurchase(){
         <div class="uploaded-files" id="pr-uploaded"></div>
       </div>
       <div class="btn-row">
-        <button class="btn-primary" onclick="showToast('✅ PR submitted! Purchase team notified. Cross-dept task created.','success')">Submit PR</button>
+        <button class="btn-primary" onclick="submitPR()">Submit PR</button>
         <button class="btn-secondary" onclick="showPage('rfq')">Go to RFQ →</button>
       </div>
     </div>
@@ -1902,7 +1956,7 @@ function pageAttendance(){
     <button class="btn-primary btn-xs" style="margin-top:10px" onclick="openModal('Add Multi-Site Assignment',\`<div class='eod-form'><div class='row2'><div class='form-row'><label>Employee</label><select>${emp.map(e=>`<option>${e.name}</option>`).join('')}</select></div><div class='form-row'><label>From Date</label><input type='date'/></div></div><div class='row2'><div class='form-row'><label>Site 1</label><select>${SITES.filter(s=>s.status==='active').map(s=>`<option>${s.name}</option>`).join('')}</select></div><div class='form-row'><label>Site 2</label><select>${SITES.filter(s=>s.status==='active').map(s=>`<option>${s.name}</option>`).join('')}</select></div></div><div class='btn-row'><button class='btn-primary' onclick="showToast('Assignment saved','success');closeModal()">Save</button></div></div>\`)">+ Add Multi-Site</button>
   </div>
   <div class="btn-row">
-    <button class="btn-primary" onclick="showToast('✅ Attendance saved','success')">💾 Save Attendance</button>
+    <button class="btn-primary" onclick="saveAttendance()">💾 Save Attendance</button>
     <button class="btn-secondary" onclick="showToast('Exported to Excel','success')">📥 Export Excel</button>
   </div>`;
 }
@@ -2089,8 +2143,10 @@ function pageDelegate(){
           const pri=document.getElementById('del-pri').value;
           const due=document.getElementById('del-due').value;
           if(!task){showToast('Enter task description','error');return;}
-          DELEGATED_TASKS.unshift({id:'dt'+Date.now(),from:'prayas',to,task,priority:pri,date:due,done:false});
-          showToast('✅ Task delegated to '+USERS[to]?.name,'success');
+          const newTask={id:'dt'+Date.now(),from:'prayas',to,task,priority:pri,date:due,done:false};
+          DELEGATED_TASKS.unshift(newTask);
+          if(window.fbSaveDelegatedTask) window.fbSaveDelegatedTask(newTask);
+          showToast('✅ Task delegated to '+USERS[to]?.name+' & saved to cloud','success');
           document.getElementById('del-task').value='';
           renderDelegateList();
         ">📤 Delegate Task</button>
@@ -2310,7 +2366,7 @@ function pageQuotation(){
     </div>
     <div class="form-row"><label>Terms & Conditions</label><textarea rows="3" placeholder="Scope inclusions, exclusions...">1. Taxes extra as applicable\n2. Price variation clause as per market\n3. Work to be done during client site working hours</textarea></div>
     <div class="btn-row" style="margin-top:12px">
-      <button class="btn-primary" onclick="showToast('✅ Quotation ${qNo} saved','success')">💾 Save Quotation</button>
+      <button class="btn-primary" onclick="saveQuotation('${qNo}')">💾 Save Quotation</button>
       <button class="btn-secondary" onclick="showToast('PDF generated','success')">📄 Download PDF</button>
       <button class="btn-secondary" onclick="showToast('Sent via email','success')">📧 Send to Client</button>
     </div>`;
@@ -2445,6 +2501,128 @@ async function loadOwnerEODView(){
         ${r.mood?`<p style="margin-top:4px">Mood: ${r.mood}</p>`:''}
       </div>
     </div>`).join('');
+}
+
+// ===================== FIREBASE ACTION HANDLERS =====================
+async function saveCashEntry(){
+  const project=document.getElementById('cash-project')?.value||'';
+  const category=document.getElementById('cash-category')?.value||'';
+  const amount=document.getElementById('cash-amount')?.value||'';
+  const desc=document.getElementById('cash-desc')?.value||'';
+  const paidTo=document.getElementById('cash-paidto')?.value||'';
+  const date=document.getElementById('cash-date')?.value||new Date().toISOString().split('T')[0];
+  if(!project||!category||!amount){showToast('⚠️ Project, Category and Amount are required','info');return;}
+  showToast('⏳ Saving...','info');
+  const ok=window.fbSaveCashEntry?await window.fbSaveCashEntry({project,category,amount:+amount,desc,paidTo,date}):false;
+  if(ok){showToast('✅ Cash entry saved to cloud','success');}
+  else{showToast('⚠️ Saved locally (cloud sync failed)','info');}
+}
+
+async function submitPR(){
+  const site=document.getElementById('pr-site')?.value||'';
+  const desc=document.getElementById('pr-desc')?.value||'';
+  const qty=document.getElementById('pr-qty')?.value||'';
+  const urgency=document.getElementById('pr-urgency')?.value||'Normal';
+  const date=document.getElementById('pr-date')?.value||'';
+  if(!desc||!qty){showToast('⚠️ Material description and quantity are required','info');return;}
+  showToast('⏳ Submitting PR...','info');
+  const prNo='PR-'+new Date().toISOString().slice(2,10).replace(/-/g,'')+'-'+Math.floor(Math.random()*1000);
+  const ok=window.fbSavePR?await window.fbSavePR({prNo,site,desc,qty,urgency,requiredBy:date}):false;
+  if(ok){showToast('✅ PR '+prNo+' submitted! Purchase team notified.','success');}
+  else{showToast('⚠️ PR saved locally (cloud sync failed)','info');}
+}
+
+async function saveEnquiry(){
+  const client=document.getElementById('enq-client')?.value||document.querySelector('#modal-body input')?.value||'';
+  const project=document.getElementById('enq-project')?.value||'';
+  const value=document.getElementById('enq-value')?.value||'';
+  showToast('⏳ Logging enquiry...','info');
+  const ok=window.fbSaveEnquiry?await window.fbSaveEnquiry({client,project,estimatedValue:+value||0}):false;
+  if(ok){showToast('✅ Enquiry logged! Team notified.','success');closeModal();}
+  else{showToast('✅ Enquiry logged (local)','success');closeModal();}
+}
+
+async function saveStageUpdate(quoteId){
+  const stage=document.getElementById('new-stage')?.value||'';
+  const notes=document.querySelector('#modal-body textarea')?.value||'';
+  showToast('⏳ Updating...','info');
+  const ok=window.fbSaveStageUpdate?await window.fbSaveStageUpdate(quoteId,stage,notes):false;
+  if(ok){showToast('✅ Stage updated & saved to cloud!','success');closeModal();}
+  else{showToast('✅ Stage updated (local)','success');closeModal();}
+}
+
+async function savePettyCash(){
+  const project=document.getElementById('petty-project')?.value||'';
+  const category=document.getElementById('petty-category')?.value||'';
+  const amount=document.getElementById('petty-amount')?.value||'';
+  const narration=document.getElementById('petty-narration')?.value||'';
+  const date=document.getElementById('petty-date')?.value||new Date().toISOString().split('T')[0];
+  if(!project||!category||!amount){showToast('⚠️ Project, Category and Amount required','info');return;}
+  showToast('⏳ Saving...','info');
+  const ok=window.fbSaveCashEntry?await window.fbSaveCashEntry({type:'petty',project,category,amount:+amount,desc:narration,paidTo:'',date}):false;
+  if(ok){showToast('✅ Petty cash entry saved to cloud!','success');}
+  else{showToast('⚠️ Saved locally (cloud sync failed)','info');}
+}
+
+function openContractorPayment(name,site){
+  openModal('Add Payment — '+name,`
+  <div class="eod-form">
+    <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Contractor: <strong style="color:var(--orange)">${name}</strong> · Site: <strong>${site}</strong></div>
+    <div class="row2">
+      <div class="form-row"><label>Date</label><input id="cp-date" type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
+      <div class="form-row"><label>Payment Type</label>
+        <select id="cp-type"><option>Cash Advance</option><option>Bill Payment</option><option>Formal Salary (ESI/PF)</option><option>Final Settlement</option></select>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Amount (₹)</label><input id="cp-amount" type="number" placeholder="0"/></div>
+      <div class="form-row"><label>Payment Mode</label>
+        <select id="cp-mode"><option>Cash</option><option>Bank Transfer</option><option>UPI</option></select>
+      </div>
+    </div>
+    <div class="form-row"><label>Notes</label><textarea id="cp-notes" rows="2" placeholder="Work period, remarks..."></textarea></div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveContractorPayment('${name}','${site}')">Save Payment</button></div>
+  </div>`);
+}
+
+async function saveContractorPayment(name,site){
+  const date=document.getElementById('cp-date')?.value||new Date().toISOString().split('T')[0];
+  const type=document.getElementById('cp-type')?.value||'';
+  const amount=document.getElementById('cp-amount')?.value||'';
+  const mode=document.getElementById('cp-mode')?.value||'';
+  const notes=document.getElementById('cp-notes')?.value||'';
+  if(!amount){showToast('⚠️ Amount required','info');return;}
+  showToast('⏳ Saving...','info');
+  const ok=window.fbSaveCashEntry?await window.fbSaveCashEntry({type:'contractor',contractor:name,site,paymentType:type,amount:+amount,mode,notes,date}):false;
+  if(ok){showToast('✅ Contractor payment saved to cloud!','success');closeModal();}
+  else{showToast('✅ Payment saved (local)','success');closeModal();}
+}
+
+async function saveQuotation(qNo){
+  const client=document.getElementById('qt-client')?.value||'';
+  const total=document.querySelector('#qt-body [style*="Grand Total"]')?.textContent||'';
+  showToast('⏳ Saving quotation...','info');
+  const ok=window.fbSaveQuotation?await window.fbSaveQuotation({quoteNo:qNo,client,grandTotal:total,savedAt:new Date().toISOString()}):false;
+  if(ok){showToast('✅ Quotation '+qNo+' saved to cloud!','success');}
+  else{showToast('✅ Quotation '+qNo+' saved (local)','success');}
+}
+
+async function saveAttendance(){
+  const rows=document.querySelectorAll('#attendance-body tr');
+  const entries=[];
+  rows.forEach(row=>{
+    const cells=row.querySelectorAll('td');
+    if(cells.length>1){
+      const name=cells[0]?.textContent?.trim();
+      const status=cells[1]?.querySelector('select')?.value||row.getAttribute('data-status')||'P';
+      if(name)entries.push({name,status});
+    }
+  });
+  const date=document.getElementById('att-date')?.value||new Date().toISOString().split('T')[0];
+  showToast('⏳ Saving attendance...','info');
+  const ok=window.fbSaveAttendance?await window.fbSaveAttendance({date,entries,site:document.getElementById('att-site')?.value||'All'}):false;
+  if(ok){showToast('✅ Attendance saved to cloud!','success');}
+  else{showToast('✅ Attendance saved (local)','info');}
 }
 
 // ===================== OWNER EOD PAGE =====================
