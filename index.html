@@ -673,20 +673,47 @@ function removeUploadedFile(id){
 
 // Improvement 5: downloadAsPDF
 function downloadAsPDF(content,filename){
-  const w=window.open('','_blank');
-  if(!w){showToast('Popup blocked — allow popups and try again','info');return;}
-  w.document.write(`<!DOCTYPE html><html><head><title>${filename}</title>
-  <style>body{font-family:Arial,sans-serif;padding:20px;color:#000}
-  table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:8px;font-size:12px}
-  th{background:#1a1a2e;color:#fff}.header{text-align:center;margin-bottom:20px}
-  h2{color:#1a1a2e}@media print{.no-print{display:none}}</style></head>
-  <body>${content}<br><button class="no-print" onclick="window.print()" style="margin-top:20px;padding:10px 24px;background:#f47c20;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer">🖨️ Print / Save PDF</button></body></html>`);
-  w.document.close();
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${filename}</title>
+  <style>
+    body{font-family:Arial,sans-serif;padding:24px;color:#000;max-width:900px;margin:0 auto}
+    table{width:100%;border-collapse:collapse;margin-bottom:16px}
+    th,td{border:1px solid #bbb;padding:8px 10px;font-size:12px;text-align:left}
+    th{background:#1a1a2e;color:#fff}
+    h1,h2{color:#1a1a2e}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;border-bottom:3px solid #f47c20;padding-bottom:12px}
+    .company{font-size:22px;font-weight:900;color:#1a1a2e}
+    .tag-line{font-size:11px;color:#666}
+    .no-print{margin-top:24px;display:flex;gap:12px}
+    @media print{.no-print{display:none}body{padding:10px}}
+    input,select,textarea{border:none;background:transparent;font-size:12px;color:#000;width:100%;font-family:Arial,sans-serif}
+  </style></head>
+  <body>
+  <div class="header">
+    <div><div class="company">1WorldCrafts</div><div class="tag-line">Engineering Reliable Environments · Faridabad</div></div>
+    <div style="text-align:right;font-size:11px;color:#666">${new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</div>
+  </div>
+  ${content}
+  <div class="no-print">
+    <button onclick="window.print()" style="padding:10px 28px;background:#f47c20;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-weight:700">🖨️ Print / Save as PDF</button>
+    <button onclick="window.close()" style="padding:10px 20px;background:#eee;color:#333;border:none;border-radius:6px;font-size:14px;cursor:pointer">Close</button>
+  </div>
+  </body></html>`;
+  // Use blob URL — works without popup permission
+  const blob=new Blob([html],{type:'text/html'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.target='_blank';
+  a.rel='noopener';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),10000);
+  showToast('PDF opened in new tab — click Print / Save as PDF','success');
 }
 function downloadQuotationPDF(){
-  const el=document.getElementById('quotation-preview')||document.getElementById('qt-body');
-  if(!el){showToast('No quotation to export','info');return;}
-  downloadAsPDF(el.innerHTML,'1WC_Quotation.pdf');
+  const el=document.getElementById('qt-body');
+  if(!el){showToast('Build the quotation first','info');return;}
+  const content=`<h2>Quotation</h2>${el.innerHTML}`;
+  downloadAsPDF(content,'1WC_Quotation');
 }
 function downloadRABillPDF(){
   const site=document.getElementById('ra-site')?.value||'—';
@@ -2708,11 +2735,14 @@ function renderAttGrid(){
     const eAtt=attData[e.id]||{};
     let pCount=0,aCount=0;
     const cells=days.map(d=>{
-      const v=eAtt[d]||'A';
+      const v=eAtt[d]||'';
       if(v==='P'||v==='OT')pCount++;
       else if(v==='A')aCount++;
+      const bgColor=v?(statusColors[v]||'#666')+'22':'var(--bg2)';
+      const txtColor=v?(statusColors[v]||'var(--text)'):'var(--text2)';
       return `<td style="text-align:center;padding:1px">
-        <select data-emp="${e.id}" data-day="${d}" onchange="attCellChange(this)" style="font-size:10px;padding:1px 0;border:1px solid var(--border);background:${statusColors[v]||'#666'}22;color:${statusColors[v]||'var(--text)'};border-radius:3px;width:32px;cursor:pointer">
+        <select data-emp="${e.id}" data-day="${d}" onchange="attCellChange(this)" style="font-size:10px;padding:1px 0;border:1px solid var(--border);background:${bgColor};color:${txtColor};border-radius:3px;width:32px;cursor:pointer">
+          <option value="" ${!v?'selected':''}>—</option>
           ${['P','A','W','H','O','OT'].map(opt=>`<option value="${opt}"${v===opt?' selected':''}>${opt}</option>`).join('')}
         </select>
       </td>`;
@@ -2727,9 +2757,9 @@ function renderAttGrid(){
         <div style="font-size:10px;color:var(--text2)">${e.role} · ${e.wageType==='salary'?'₹'+e.wage+'/mo':'₹'+e.wage+'/day'}</div>
       </td>
       ${cells}
-      <td style="text-align:center;font-weight:700;color:var(--green);padding:4px 6px">${pCount}</td>
-      <td style="text-align:center;font-weight:700;color:var(--red);padding:4px 6px">${aCount}</td>
-      <td style="text-align:right;font-weight:700;padding:4px 10px;color:var(--gold)">₹${wages.toLocaleString('en-IN')}</td>
+      <td class="att-p" style="text-align:center;font-weight:700;color:var(--green);padding:4px 6px">${pCount}</td>
+      <td class="att-a" style="text-align:center;font-weight:700;color:var(--red);padding:4px 6px">${aCount}</td>
+      <td class="att-wages" style="text-align:right;font-weight:700;padding:4px 10px;color:var(--gold)">₹${wages.toLocaleString('en-IN')}</td>
       <td style="text-align:center;padding:4px 6px"><button onclick="deleteEmployee('${e.id}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px" title="Remove">🗑️</button></td>
     </tr>`;
   }).join('');
@@ -2754,11 +2784,40 @@ function attCellChange(sel){
   if(!data[empId])data[empId]={};
   data[empId][day]=val;
   saveAttData(data);
-  // recolor
+  // recolor this cell only — no full re-render
   const sc={P:'var(--green)',A:'var(--red)',W:'#999',H:'var(--blue)',O:'var(--orange)',OT:'var(--purple)'};
   sel.style.background=(sc[val]||'#666')+'22';
   sel.style.color=sc[val]||'var(--text)';
-  renderAttGrid();
+  // update P/A counts and wages for this employee row only
+  const row=sel.closest('tr');
+  if(row){
+    const cells=row.querySelectorAll('select[data-emp]');
+    let p=0,a=0;
+    cells.forEach(s=>{if(s.value==='P'||s.value==='OT')p++;else if(s.value==='A')a++;});
+    const tds=row.querySelectorAll('td');
+    const emp=window.ATT_EMPLOYEES.find(e=>e.id===empId);
+    // P count is 2nd-last-3, A count is 2nd-last-2, Wages is 2nd-last-1
+    const pTd=row.querySelector('td.att-p');
+    const aTd=row.querySelector('td.att-a');
+    const wTd=row.querySelector('td.att-wages');
+    if(pTd)pTd.textContent=p;
+    if(aTd)aTd.textContent=a;
+    if(wTd&&emp){const w=emp.wageType==='salary'?emp.wage:p*emp.wage;wTd.textContent='₹'+w.toLocaleString('en-IN');}
+    // update total wages summary
+    updateAttWagesSummary();
+  }
+}
+function updateAttWagesSummary(){
+  const data=loadAttData();
+  const monthStr=document.getElementById('att-month')?.value||new Date().toISOString().substr(0,7);
+  let total=0;
+  window.ATT_EMPLOYEES.forEach(e=>{
+    const eAtt=data[e.id]||{};
+    const p=Object.values(eAtt).filter(v=>v==='P'||v==='OT').length;
+    total+=e.wageType==='salary'?e.wage:p*e.wage;
+  });
+  const s=document.getElementById('att-wages-summary');
+  if(s)s.innerHTML=`<div style="font-weight:700;font-size:15px">💰 Total Wages / Salary Payable: <span style="color:var(--gold)">₹${total.toLocaleString('en-IN')}</span> for ${monthStr}</div>`;
 }
 function deleteEmployee(id){
   if(!confirm('Remove this employee from the attendance list?'))return;
