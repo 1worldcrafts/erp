@@ -7,6 +7,7 @@
 <!-- Firebase SDK (compat version via CDN) -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
 <script>
   const firebaseConfig = {
     apiKey: "AIzaSyCq_ah_zt0Z9kR71asGVYxkU0ko8-Pt3TU",
@@ -557,6 +558,198 @@ let VENDOR_COMPARISONS=[
   ]},
 ];
 
+// ======================== GLOBAL PERSISTENT STORES ========================
+// ATT_EMPLOYEES
+window.ATT_EMPLOYEES=(()=>{try{const s=localStorage.getItem('1wc_att_employees');if(s)return JSON.parse(s);}catch(e){}return[
+  {id:'ajay',name:'Ajay Kumar',role:'Site Supervisor',wageType:'salary',wage:28000},
+  {id:'fathe',name:'Fathe Mian',role:'Technician',wageType:'daily',wage:650},
+  {id:'raju',name:'Raju Singh',role:'Helper',wageType:'daily',wage:500},
+  {id:'naval',name:'Naval Kishor',role:'Electrician',wageType:'daily',wage:600},
+];})();
+function saveATTEmployees(){try{localStorage.setItem('1wc_att_employees',JSON.stringify(window.ATT_EMPLOYEES));}catch(e){}}
+
+// ATT_SITES seeded from SITES
+window.ATT_SITES=(()=>{try{const s=localStorage.getItem('1wc_att_sites');if(s)return JSON.parse(s);}catch(e){}return SITES.filter(s=>s.status==='active').map(s=>({code:s.code,name:s.name}));})();
+function saveATTSites(){try{localStorage.setItem('1wc_att_sites',JSON.stringify(window.ATT_SITES));}catch(e){}}
+
+// QUOTED_JOBS
+window.QUOTED_JOBS=(()=>{try{const s=localStorage.getItem('1wc_quoted_jobs');if(s)return JSON.parse(s);}catch(e){}return SALES_PIPELINE.map(p=>({id:p.id,client:p.client,desc:p.desc,value:p.value||0,stage:p.stage,date:p.deadline||new Date().toISOString().split('T')[0]}));})();
+function saveQuotedJobs(){try{localStorage.setItem('1wc_quoted_jobs',JSON.stringify(window.QUOTED_JOBS));}catch(e){}}
+
+// LEDGER_ENTRIES
+window.LEDGER_ENTRIES=(()=>{try{const s=localStorage.getItem('1wc_ledger');if(s)return JSON.parse(s);}catch(e){}return[
+  {id:'L001',date:'2026-09-27',desc:'Payment received – DMRC TKD RA Bill#4',project:'DMRC-TKD',type:'Receipt',amount:320000,party:'DMRC'},
+  {id:'L002',date:'2026-09-26',desc:'Vendor payment – Systemair India',project:'PERFETTI-RDR',type:'Payment',amount:-184500,party:'Systemair India'},
+  {id:'L003',date:'2026-09-25',desc:'Petty cash – Site transport (Bijwasan)',project:'BIJWASAN-D',type:'Expense',amount:-4200,party:'Driver'},
+  {id:'L004',date:'2026-09-24',desc:'Invoice raised – Godrej Nest RA Bill#2',project:'GODREJ-NEST',type:'Invoice',amount:860000,party:'Godrej Properties'},
+];})();
+function saveLedger(){try{localStorage.setItem('1wc_ledger',JSON.stringify(window.LEDGER_ENTRIES));}catch(e){}}
+
+// PROJECT_PL
+window.PROJECT_PL=(()=>{try{const s=localStorage.getItem('1wc_project_pl');if(s)return JSON.parse(s);}catch(e){}return{};})();
+function saveProjectPL(){try{localStorage.setItem('1wc_project_pl',JSON.stringify(window.PROJECT_PL));}catch(e){}}
+
+// CONTRACTORS
+window.CONTRACTORS=(()=>{try{const s=localStorage.getItem('1wc_contractors');if(s)return JSON.parse(s);}catch(e){}return[
+  {id:'c001',name:'Rehmat',site:'Bijwasan-P',totalBill:120000,advance:25000,formalSalary:18000,actualCash:38000},
+  {id:'c002',name:'Mustaqueen',site:'Godrej Nest',totalBill:280000,advance:40000,formalSalary:22000,actualCash:55000},
+  {id:'c003',name:'Parvez',site:'Bijwasan-D',totalBill:95000,advance:15000,formalSalary:15000,actualCash:32000},
+];})();
+function saveContractors(){try{localStorage.setItem('1wc_contractors',JSON.stringify(window.CONTRACTORS));}catch(e){}}
+
+// PURCHASE_REQUESTS
+window.PURCHASE_REQUESTS=(()=>{try{const s=localStorage.getItem('1wc_prs');if(s)return JSON.parse(s);}catch(e){}return[
+  {id:'PR001',site:'PERFETTI-RDR',siteName:'Perfetti Rudrapur',mat:'Armaflex 25mm Insulation',qty:'120 sqm',urgency:'high',by:'Rohtash',date:'2026-09-30',status:'RFQ Sent'},
+  {id:'PR002',site:'DMRC-TKD',siteName:'DMRC TKD',mat:'GI Duct Sheet 22 Gauge',qty:'800 kg',urgency:'med',by:'Ajay',date:'2026-09-29',status:'PR Received'},
+  {id:'PR003',site:'GODREJ-NEST',siteName:'Godrej Nest',mat:'AHU Filter F7 (6 nos)',qty:'6 Nos',urgency:'low',by:'Vinay',date:'2026-09-25',status:'Ordered'},
+  {id:'PR004',site:'BIJWASAN-D',siteName:'Bijwasan Ducting',mat:'GI Duct Sheet 24 Gauge',qty:'500 kg',urgency:'med',by:'Parvez',date:'2026-09-26',status:'PR Received'},
+];})();
+function savePRs(){try{localStorage.setItem('1wc_prs',JSON.stringify(window.PURCHASE_REQUESTS));}catch(e){}}
+
+// VENDORS
+window.VENDORS=(()=>{try{const s=localStorage.getItem('1wc_vendors');if(s)return JSON.parse(s);}catch(e){}return[
+  {id:'v001',name:'Systemair India',cat:'AHU / Fan Coil Units',city:'Delhi',rating:5,contact:'9811XXXXX1',email:''},
+  {id:'v002',name:'Zeco Aircon',cat:'Grilles / Diffusers',city:'Delhi',rating:4,contact:'9811XXXXX2',email:''},
+  {id:'v003',name:'Jindal Steel',cat:'GI Duct Sheets',city:'Hisar',rating:4,contact:'9811XXXXX3',email:''},
+  {id:'v004',name:'Thermoflex India',cat:'Insulation – Armaflex',city:'Gurgaon',rating:4,contact:'9811XXXXX4',email:''},
+  {id:'v005',name:'Aeroflex',cat:'Insulation – Premium',city:'Delhi',rating:5,contact:'9811XXXXX5',email:''},
+  {id:'v006',name:'K-Flex India',cat:'Insulation',city:'Noida',rating:3,contact:'9811XXXXX6',email:''},
+  {id:'v007',name:'ABB India',cat:'Electrical / Panels',city:'Gurgaon',rating:4,contact:'9811XXXXX7',email:''},
+  {id:'v008',name:'Honeywell BMS',cat:'Controls / Sensors',city:'Delhi',rating:5,contact:'9811XXXXX8',email:''},
+];})();
+function saveVendors(){try{localStorage.setItem('1wc_vendors',JSON.stringify(window.VENDORS));}catch(e){}}
+
+// VENDOR_COMPARISONS_LS
+window.VC_LIST=(()=>{try{const s=localStorage.getItem('1wc_vc');if(s)return JSON.parse(s);}catch(e){}return[
+  {id:'VC001',item:'12000 CFM AHU (Daikin/Blue Star)',site:'DMRC-TKD',date:'2026-09-28',quotes:[
+    {vendor:'Greenfield HVAC',rating:4.2,technical:{make:'Daikin VRV',cop:3.8,warranty:'2yr',delivery:'4 wk'},commercial:{price:4850000,gst:18,terms:'30% advance',validity:'30 days'}},
+    {vendor:'Arctic Systems',rating:3.8,technical:{make:'Blue Star Cassette',cop:3.5,warranty:'1yr',delivery:'6 wk'},commercial:{price:4620000,gst:18,terms:'50% advance',validity:'15 days'}},
+    {vendor:'Cool-Tech Engg',rating:4.5,technical:{make:'Daikin Split',cop:3.6,warranty:'2yr',delivery:'3 wk'},commercial:{price:4710000,gst:18,terms:'20% advance',validity:'45 days'}},
+  ]},
+];})();
+function saveVCList(){try{localStorage.setItem('1wc_vc',JSON.stringify(window.VC_LIST));}catch(e){}}
+
+// PHOTO_UPLOADS
+window.PHOTO_UPLOADS=[];
+window.UPLOADED_FILES=[];
+
+// ======================== UTILITY FUNCTIONS ========================
+// Improvement 4: handleFiles — real file preview
+function handleFiles(input,containerId){
+  const c2=document.getElementById(containerId)||document.getElementById('eod-uploaded');
+  if(!c2)return;
+  Array.from(input.files).forEach(f=>{
+    const id='f_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
+    const isImg=f.type.startsWith('image/');
+    const sizeStr=f.size>1048576?(f.size/1048576).toFixed(1)+'MB':(f.size/1024).toFixed(0)+'KB';
+    const reader=new FileReader();
+    reader.onload=function(e){
+      const dataUrl=e.target.result;
+      window.UPLOADED_FILES.push({id,name:f.name,type:f.type,size:f.size,dataUrl});
+      window.PHOTO_UPLOADS.push({id,name:f.name,type:f.type,size:f.size,dataUrl});
+      const div=document.createElement('div');
+      div.id='prev_'+id;
+      div.style.cssText='display:inline-block;margin:4px;border:1px solid var(--border);border-radius:8px;padding:6px;background:var(--navy2);position:relative;vertical-align:top';
+      if(isImg){
+        div.innerHTML=`<img src="${dataUrl}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;display:block"><div style="font-size:10px;color:var(--text2);margin-top:3px;max-width:70px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${f.name}</div><div style="font-size:10px;color:var(--text2)">${sizeStr}</div><span onclick="removeUploadedFile('${id}')" style="position:absolute;top:2px;right:4px;cursor:pointer;color:var(--red);font-size:14px;font-weight:700">×</span>`;
+      } else {
+        const icon=f.type==='application/pdf'?'📄':f.name.endsWith('.xlsx')||f.name.endsWith('.xls')?'📊':'📎';
+        div.innerHTML=`<div style="font-size:28px;text-align:center">${icon}</div><div style="font-size:10px;color:var(--text2);max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</div><div style="font-size:10px;color:var(--text2)">${sizeStr}</div><span onclick="removeUploadedFile('${id}')" style="position:absolute;top:2px;right:4px;cursor:pointer;color:var(--red);font-size:14px;font-weight:700">×</span>`;
+      }
+      c2.appendChild(div);
+      // Update counter
+      const cnt=document.getElementById('file-count-'+containerId);
+      if(cnt)cnt.textContent='✓ '+window.UPLOADED_FILES.length+' files attached';
+    };
+    reader.readAsDataURL(f);
+  });
+}
+function removeUploadedFile(id){
+  window.UPLOADED_FILES=window.UPLOADED_FILES.filter(f=>f.id!==id);
+  window.PHOTO_UPLOADS=window.PHOTO_UPLOADS.filter(f=>f.id!==id);
+  const el=document.getElementById('prev_'+id);
+  if(el)el.remove();
+}
+
+// Improvement 5: downloadAsPDF
+function downloadAsPDF(content,filename){
+  const w=window.open('','_blank');
+  if(!w){showToast('Popup blocked — allow popups and try again','info');return;}
+  w.document.write(`<!DOCTYPE html><html><head><title>${filename}</title>
+  <style>body{font-family:Arial,sans-serif;padding:20px;color:#000}
+  table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:8px;font-size:12px}
+  th{background:#1a1a2e;color:#fff}.header{text-align:center;margin-bottom:20px}
+  h2{color:#1a1a2e}@media print{.no-print{display:none}}</style></head>
+  <body>${content}<br><button class="no-print" onclick="window.print()" style="margin-top:20px;padding:10px 24px;background:#f47c20;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer">🖨️ Print / Save PDF</button></body></html>`);
+  w.document.close();
+}
+function downloadQuotationPDF(){
+  const el=document.getElementById('quotation-preview')||document.getElementById('qt-body');
+  if(!el){showToast('No quotation to export','info');return;}
+  downloadAsPDF(el.innerHTML,'1WC_Quotation.pdf');
+}
+function downloadRABillPDF(){
+  const site=document.getElementById('ra-site')?.value||'—';
+  const billNo=document.getElementById('ra-bill-no')?.value||'RA-XXXX';
+  const from=document.getElementById('ra-from')?.value||'';
+  const to=document.getElementById('ra-to')?.value||'';
+  const labour=parseFloat(document.getElementById('ra-labour')?.value)||0;
+  const contractor=parseFloat(document.getElementById('ra-contractor')?.value)||0;
+  const retPct=parseFloat(document.getElementById('ra-retention')?.value)||10;
+  const gstPct=parseFloat(document.getElementById('ra-gst')?.value)||18;
+  const gross=labour+contractor;
+  const retention=gross*(retPct/100);
+  const net=gross-retention;
+  const gst=net*(gstPct/100);
+  const total=net+gst;
+  const fmt=n=>'₹'+Math.round(n).toLocaleString('en-IN');
+  const content=`<h2>1WorldCrafts – RA Bill</h2>
+  <table><tr><th>Bill No</th><td>${billNo}</td><th>Site</th><td>${site}</td></tr>
+  <tr><th>Period</th><td colspan="3">${from} to ${to}</td></tr></table><br>
+  <table><tr><th>Component</th><th>Amount (₹)</th></tr>
+  <tr><td>Labour Component</td><td>${fmt(labour)}</td></tr>
+  <tr><td>Contractor Component</td><td>${fmt(contractor)}</td></tr>
+  <tr><th>Gross Amount</th><th>${fmt(gross)}</th></tr>
+  <tr><td>Retention @ ${retPct}%</td><td>(${fmt(retention)})</td></tr>
+  <tr><td>Net Amount</td><td>${fmt(net)}</td></tr>
+  <tr><td>GST @ ${gstPct}%</td><td>${fmt(gst)}</td></tr>
+  <tr><th>Total Payable</th><th>${fmt(total)}</th></tr></table>`;
+  downloadAsPDF(content,'1WC_RA_Bill_'+billNo+'.pdf');
+}
+function downloadAttendancePDF(){
+  const el=document.getElementById('att-table-wrap');
+  if(!el){showToast('Load attendance first','info');return;}
+  const header='<h2>1WorldCrafts – Attendance Register</h2>';
+  downloadAsPDF(header+el.innerHTML,'1WC_Attendance.pdf');
+}
+function downloadVendorComparePDF(){
+  const el=document.getElementById('vc-table-wrap');
+  if(!el){showToast('Load vendor comparison first','info');return;}
+  const header='<h2>1WorldCrafts – Vendor Comparison</h2>';
+  downloadAsPDF(header+el.innerHTML,'1WC_VendorCompare.pdf');
+}
+
+// Improvement 6: SheetJS helpers
+function exportToExcel(data,filename,sheetName){
+  if(typeof XLSX==='undefined'){showToast('Excel library loading... try again in a moment','info');return;}
+  const ws=XLSX.utils.json_to_sheet(data);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,sheetName||'Sheet1');
+  XLSX.writeFile(wb,filename+'.xlsx');
+}
+function importFromExcel(file,callback){
+  if(typeof XLSX==='undefined'){showToast('Excel library not loaded','info');return;}
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const data=new Uint8Array(e.target.result);
+    const wb=XLSX.read(data,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const json=XLSX.utils.sheet_to_json(ws);
+    callback(json);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
 // State
 let CU=null,currentPage='dashboard',taskChecked={},sidebarOpen=false;
 let attendance_data={};
@@ -746,9 +939,9 @@ function showPage(id){
     case 'tasks': content.innerHTML=pageTasks();break;
     case 'eod': content.innerHTML=pageEOD();break;
     case 'sites': content.innerHTML=pageSites();break;
-    case 'sales': content.innerHTML=pageSales(); loadSalesPipelineFromCloud(); break;
-    case 'accounts': content.innerHTML=pageAccounts();break;
-    case 'purchase': content.innerHTML=pagePurchase();break;
+    case 'sales': content.innerHTML=pageSales(); loadSalesPipelineFromCloud(); renderQuotedJobs(); break;
+    case 'accounts': content.innerHTML=pageAccounts(); setTimeout(()=>{renderLedger();renderPL();renderContractors();},0); break;
+    case 'purchase': content.innerHTML=pagePurchase(); setTimeout(()=>{renderPRCards();renderVendorDB();},0); break;
     case 'team-status': pageTeamStatus();break;
     case 'alerts': pageAlerts();break;
     case 'eod-owner': pageOwnerEODs().catch(e=>{c.innerHTML='<div class="card"><p style="color:var(--red)">Failed to load EOD reports. Check connection.</p></div>';console.error(e);});break;
@@ -1124,15 +1317,6 @@ function pageEOD(){
     </div>
   </div>`;
 }
-function handleFiles(input,containerId){
-  const c=document.getElementById(containerId)||document.getElementById('eod-uploaded');
-  if(!c)return;
-  Array.from(input.files).forEach(f=>{
-    const chip=document.createElement('div');chip.className='file-chip';
-    chip.innerHTML=`<span>${f.name.length>25?f.name.substring(0,22)+'...':f.name}</span><span class="remove" onclick="this.parentElement.remove()">×</span>`;
-    c.appendChild(chip);
-  });
-}
 async function submitEOD(){
   const summary=document.getElementById('eod-summary')?.value||'';
   const tomorrow=document.getElementById('eod-tomorrow')?.value||'';
@@ -1266,23 +1450,15 @@ function pageSales(){
     <div id="cloud-enquiries-container" style="margin-top:10px"></div>
   </div>
   <div class="sales-tab" id="sales-quoted" style="display:none">
-    <div class="info-box">All registered quotations – total value and status</div>
-    <table>
-      <thead><tr><th>Quote No.</th><th>Client</th><th>Description</th><th>Value (₹)</th><th>Stage</th><th>Action</th></tr></thead>
-      <tbody>
-      ${SALES_PIPELINE.map(p=>`<tr>
-        <td style="color:var(--orange)">${p.id}</td>
-        <td>${p.client}</td>
-        <td>${p.desc}</td>
-        <td style="color:var(--green)">${p.value?'₹'+p.value.toLocaleString('en-IN'):'TBD'}</td>
-        <td><span class="tag tag-${p.stage==='Won'?'green':p.stage==='Negotiation'?'gold':'blue'}">${p.stage}</span></td>
-        <td><button class="btn-secondary btn-xs" onclick="showPage('quotation')">View</button></td>
-      </tr>`).join('')}
-      </tbody>
-    </table>
-    <div style="margin-top:16px;padding:12px;background:var(--navy2);border-radius:8px;font-size:13px">
-      <strong>Total Quoted Value: </strong><span style="color:var(--green)">₹${totalPipeline.toLocaleString('en-IN')}</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div class="info-box" style="margin:0;flex:1">All registered quotations – editable, with live totals</div>
+      <div class="btn-row" style="margin:0">
+        <button class="btn-primary btn-sm" onclick="openAddQuote()">+ Add Quote</button>
+        <button class="btn-secondary btn-sm" onclick="exportQuotedJobs()">📥 Export Excel</button>
+      </div>
     </div>
+    <div id="quoted-jobs-table"></div>
+    <div id="quoted-jobs-total" style="margin-top:12px;padding:12px;background:var(--navy2);border-radius:8px;font-size:13px"></div>
   </div>
   <div class="sales-tab" id="sales-lost" style="display:none">
     <div class="warn-box">📊 Track lost jobs to improve win rate. AI will analyse patterns over time.</div>
@@ -1305,6 +1481,77 @@ function pageSales(){
   </div>`;
 }
 
+function renderQuotedJobs(){
+  const tbl=document.getElementById('quoted-jobs-table');
+  const tot=document.getElementById('quoted-jobs-total');
+  if(!tbl)return;
+  const total=window.QUOTED_JOBS.reduce((a,b)=>a+(b.value||0),0);
+  tbl.innerHTML=`<table><thead><tr><th>Quote No.</th><th>Client</th><th>Description</th><th>Value (₹)</th><th>Stage</th><th>Date</th><th>Action</th></tr></thead>
+  <tbody>${window.QUOTED_JOBS.map(p=>`<tr>
+    <td style="color:var(--orange);font-weight:700">${p.id}</td>
+    <td>${p.client}</td>
+    <td>${p.desc}</td>
+    <td style="color:var(--green)">${p.value?'₹'+Number(p.value).toLocaleString('en-IN'):'TBD'}</td>
+    <td><span class="tag tag-${p.stage==='Won'?'green':p.stage==='Negotiation'?'gold':'blue'}">${p.stage}</span></td>
+    <td style="color:var(--text2)">${p.date||''}</td>
+    <td>
+      <button class="btn-secondary btn-xs" onclick="openEditQuote('${p.id}')">✏️ Edit</button>
+      <button class="btn-secondary btn-xs" style="color:var(--red)" onclick="deleteQuote('${p.id}')">🗑️</button>
+    </td>
+  </tr>`).join('')}</tbody></table>`;
+  if(tot) tot.innerHTML=`<strong>Total Quoted Value: </strong><span style="color:var(--green)">₹${total.toLocaleString('en-IN')}</span> · <span style="color:var(--text2)">${window.QUOTED_JOBS.length} quotes</span>`;
+}
+function openAddQuote(existing){
+  const p=existing||{};
+  openModal(existing?'Edit Quote':'Add Quote',`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Quote No.</label><input id="q-id" value="${p.id||'CRA-'+Date.now()}" /></div>
+      <div class="form-row"><label>Client</label><input id="q-client" value="${p.client||''}" /></div>
+    </div>
+    <div class="form-row"><label>Description</label><textarea id="q-desc" rows="2">${p.desc||''}</textarea></div>
+    <div class="row2">
+      <div class="form-row"><label>Value (₹)</label><input id="q-value" type="number" value="${p.value||0}" /></div>
+      <div class="form-row"><label>Stage</label>
+        <select id="q-stage">${['Enquiry','Quote Sent','Follow-up','Negotiation','Won','Lost'].map(s=>`<option${s===p.stage?' selected':''}>${s}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="form-row"><label>Date</label><input id="q-date" type="date" value="${p.date||new Date().toISOString().split('T')[0]}" /></div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveQuote('${p.id||''}')">Save Quote</button></div>
+  </div>`);
+}
+function saveQuote(existingId){
+  const id=document.getElementById('q-id')?.value.trim();
+  const client=document.getElementById('q-client')?.value.trim();
+  const desc=document.getElementById('q-desc')?.value.trim();
+  const value=parseFloat(document.getElementById('q-value')?.value)||0;
+  const stage=document.getElementById('q-stage')?.value;
+  const date=document.getElementById('q-date')?.value;
+  if(!id||!client){showToast('Fill Quote No. and Client','info');return;}
+  if(existingId){
+    const idx=window.QUOTED_JOBS.findIndex(q=>q.id===existingId);
+    if(idx>=0)window.QUOTED_JOBS[idx]={id,client,desc,value,stage,date};
+  } else {
+    window.QUOTED_JOBS.push({id,client,desc,value,stage,date});
+  }
+  saveQuotedJobs();
+  closeModal();
+  renderQuotedJobs();
+  showToast('Quote saved','success');
+}
+function openEditQuote(id){
+  const p=window.QUOTED_JOBS.find(q=>q.id===id);
+  if(p)openAddQuote(p);
+}
+function deleteQuote(id){
+  if(!confirm('Delete this quote?'))return;
+  window.QUOTED_JOBS=window.QUOTED_JOBS.filter(q=>q.id!==id);
+  saveQuotedJobs();
+  renderQuotedJobs();
+  showToast('Quote deleted','info');
+}
+function exportQuotedJobs(){
+  exportToExcel(window.QUOTED_JOBS.map(q=>({Quote_No:q.id,Client:q.client,Description:q.desc,Value:q.value,Stage:q.stage,Date:q.date})),'1WC_QuotedJobs','Quoted Jobs');
+}
 async function loadSalesPipelineFromCloud(){
   const container=document.getElementById('cloud-enquiries-container');
   if(!container||!window.fbLoadEnquiries)return;
@@ -1396,62 +1643,37 @@ function pageAccounts(){
   return `
   <div class="tabs">
     <div class="tab active" onclick="switchTab(this,'acc-tab','acc-ledger')">Ledger</div>
-    <div class="tab" onclick="switchTab(this,'acc-tab','acc-projects')">Project P&L</div>
+    <div class="tab" onclick="switchTab(this,'acc-tab','acc-projects')">Project P&amp;L</div>
     <div class="tab" onclick="switchTab(this,'acc-tab','acc-cash')">Cash / Petty Cash</div>
     <div class="tab" onclick="switchTab(this,'acc-tab','acc-contractor')">Contractor Sheet</div>
     <div class="tab" onclick="switchTab(this,'acc-tab','acc-entry')">New Entry</div>
+    <div class="tab" onclick="switchTab(this,'acc-tab','acc-import')">Import Excel</div>
   </div>
 
   <div class="acc-tab" id="acc-ledger">
-    <div class="stat-grid">
-      <div class="stat-card"><div class="stat-label">Total Receivable</div><div class="stat-value green">₹28.4L</div></div>
-      <div class="stat-card"><div class="stat-label">Total Payable</div><div class="stat-value red">₹12.1L</div></div>
-      <div class="stat-card"><div class="stat-label">Cash Position</div><div class="stat-value blue">₹4.2L</div></div>
-      <div class="stat-card"><div class="stat-label">Petty Cash (Sep)</div><div class="stat-value orange">₹38,400</div></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div class="stat-grid" style="flex:1;min-width:0">
+        <div class="stat-card"><div class="stat-label">Total Receipts</div><div class="stat-value green" id="ldg-receipts">—</div></div>
+        <div class="stat-card"><div class="stat-label">Total Payments</div><div class="stat-value red" id="ldg-payments">—</div></div>
+        <div class="stat-card"><div class="stat-label">Net Position</div><div class="stat-value blue" id="ldg-net">—</div></div>
+      </div>
+      <div class="btn-row" style="margin:0">
+        <button class="btn-primary btn-sm" onclick="openAddTransaction()">+ Add Transaction</button>
+        <button class="btn-secondary btn-sm" onclick="exportLedger()">📥 Excel</button>
+      </div>
     </div>
-    <div class="card">
-      <div class="card-title">Recent Transactions</div>
-      ${[
-        {date:'27 Sep',desc:'Payment received – DMRC TKD RA Bill#4',proj:'DMRC-TKD',type:'Receipt',amt:'+₹3,20,000'},
-        {date:'26 Sep',desc:'Vendor payment – Systemair India',proj:'PERFETTI-RDR',type:'Payment',amt:'-₹1,84,500'},
-        {date:'25 Sep',desc:'Petty cash – Site transport (Bijwasan)',proj:'BIJWASAN-D',type:'Expense',amt:'-₹4,200'},
-        {date:'24 Sep',desc:'Invoice raised – Godrej Nest RA Bill#2',proj:'GODREJ-NEST',type:'Invoice',amt:'+₹8,60,000'},
-        {date:'23 Sep',desc:'Contractor payment – Rehmat advance',proj:'BIJWASAN-P',type:'Payment',amt:'-₹25,000'},
-        {date:'22 Sep',desc:'Petty cash – Food/meal (Perfetti site)',proj:'PERFETTI-RDR',type:'Expense',amt:'-₹3,600'},
-      ].map(t=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--border)">
-        <div>
-          <div style="font-size:13px;font-weight:600">${t.desc}</div>
-          <div style="font-size:11px;color:var(--text2);margin-top:2px">📁 <span style="color:var(--orange)">${t.proj}</span> · <span class="tag tag-blue" style="font-size:10px">${t.type}</span> · ${t.date}</div>
-        </div>
-        <div style="font-weight:700;font-size:14px;color:${t.amt.startsWith('+')?'var(--green)':'var(--red)'}">${t.amt}</div>
-      </div>`).join('')}
-    </div>
+    <div class="card" id="ledger-table-wrap"></div>
   </div>
 
   <div class="acc-tab" id="acc-projects" style="display:none">
-    <div class="info-box">📊 All costs auto-pulled from project-code-tagged entries. Update by posting entries with correct project code.</div>
+    <div class="info-box">📊 Enter actual figures per project. All data saved locally.</div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;gap:8px">
+      <button class="btn-primary btn-sm" onclick="openEditPL()">✏️ Edit Figures</button>
+      <button class="btn-secondary btn-sm" onclick="exportPL()">📥 Export Excel</button>
+    </div>
     <div class="card">
-      <div class="card-title">Project-wise P&L</div>
-      <table>
-        <thead><tr><th>Site / Project</th><th>Billed</th><th>Received</th><th>Material Cost</th><th>Labour</th><th>Petty Cash</th><th>Margin</th><th>Health</th></tr></thead>
-        <tbody>
-        ${SITES.filter(s=>s.status!=='upcoming').map(s=>{
-          const billed=(Math.random()*40+10).toFixed(1);const recv=(parseFloat(billed)*0.7).toFixed(1);
-          const mat=(Math.random()*20+5).toFixed(1);const lab=(Math.random()*8+2).toFixed(1);const pc=(Math.random()*2+0.5).toFixed(1);
-          const margin=(parseFloat(billed)-parseFloat(mat)-parseFloat(lab)-parseFloat(pc)).toFixed(1);
-          return`<tr>
-            <td><div style="font-weight:600">${s.name}</div><div style="font-size:10px;color:var(--orange)">${s.code}</div></td>
-            <td style="color:var(--blue)">₹${billed}L</td>
-            <td style="color:var(--green)">₹${recv}L</td>
-            <td style="color:var(--text2)">₹${mat}L</td>
-            <td style="color:var(--text2)">₹${lab}L</td>
-            <td style="color:var(--text2)">₹${pc}L</td>
-            <td style="color:${parseFloat(margin)>0?'var(--green)':'var(--red)'}">₹${margin}L</td>
-            <td>${s.health==='green'?'🟢':s.health==='yellow'?'🟡':'🔴'}</td>
-          </tr>`;}).join('')}
-        </tbody>
-      </table>
+      <div class="card-title">Project-wise P&amp;L</div>
+      <div id="pl-table-wrap"></div>
     </div>
   </div>
 
@@ -1503,28 +1725,32 @@ function pageAccounts(){
   </div>
 
   <div class="acc-tab" id="acc-contractor" style="display:none">
-    <div class="info-box">Contractor payment tracking with ESI/PF formal payroll vs actual cash payments</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div class="info-box" style="margin:0;flex:1">Contractor payment tracking — ESI/PF formal vs actual cash</div>
+      <div class="btn-row" style="margin:0">
+        <button class="btn-primary btn-sm" onclick="openAddContractor()">+ Add Contractor</button>
+        <button class="btn-secondary btn-sm" onclick="exportContractors()">📥 Excel</button>
+      </div>
+    </div>
+    <div class="card" id="contractor-table-wrap"></div>
+  </div>
+
+  <div class="acc-tab" id="acc-import" style="display:none">
     <div class="card">
-      <div class="card-title">Contractor Payment Sheet</div>
-      <table>
-        <thead><tr><th>Contractor</th><th>Site</th><th>Advance</th><th>Bill Amount</th><th>Balance</th><th>Formal Salary (ESI/PF)</th><th>Cash (Actual)</th><th>Action</th></tr></thead>
-        <tbody>
-        ${[
-          {name:'Rehmat',site:'Bijwasan-P',advance:'₹25,000',bill:'₹1,20,000',balance:'₹95,000',formal:'₹18,000',cash:'₹38,000'},
-          {name:'Mustaqueen',site:'Godrej Nest',advance:'₹40,000',bill:'₹2,80,000',balance:'₹2,40,000',formal:'₹22,000',cash:'₹55,000'},
-          {name:'Parvez',site:'Bijwasan-D',advance:'₹15,000',bill:'₹95,000',balance:'₹80,000',formal:'₹15,000',cash:'₹32,000'},
-        ].map(c=>`<tr>
-          <td style="font-weight:600">${c.name}</td>
-          <td><span class="tag tag-blue">${c.site}</span></td>
-          <td style="color:var(--orange)">${c.advance}</td>
-          <td style="color:var(--blue)">${c.bill}</td>
-          <td style="color:var(--green)">${c.balance}</td>
-          <td style="color:var(--text2);font-size:11px">${c.formal}</td>
-          <td style="color:var(--text2);font-size:11px">${c.cash}</td>
-          <td><button class="btn-secondary btn-xs" onclick="openContractorPayment('${c.name}','${c.site}')">Add Payment</button></td>
-        </tr>`).join('')}
-        </tbody>
-      </table>
+      <div class="card-title">📥 Import Excel to Ledger</div>
+      <div class="info-box">Upload an Excel (.xlsx) file. Expected columns: <strong>date, desc, project, type, amount, party</strong></div>
+      <div class="upload-zone" onclick="document.getElementById('ledger-import-file').click()" style="margin-bottom:16px">
+        <div class="upload-icon">📊</div>
+        <div>Click to upload Excel file (.xlsx)</div>
+        <input type="file" id="ledger-import-file" accept=".xlsx,.xls" style="display:none" onchange="previewLedgerImport(this)">
+      </div>
+      <div id="ledger-import-preview"></div>
+      <div id="ledger-import-actions" style="display:none">
+        <div class="btn-row">
+          <button class="btn-primary" onclick="confirmLedgerImport()">✓ Confirm Import</button>
+          <button class="btn-secondary" onclick="document.getElementById('ledger-import-preview').innerHTML='';document.getElementById('ledger-import-actions').style.display='none'">Cancel</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1577,6 +1803,218 @@ async function submitEntry(){
   else{showToast('✅ Entry saved (local). Project: '+sel.value,'success');}
 }
 
+// ======================== ACCOUNTS HELPERS ========================
+function renderLedger(){
+  const wrap=document.getElementById('ledger-table-wrap');
+  if(!wrap)return;
+  const receipts=window.LEDGER_ENTRIES.filter(e=>e.amount>0).reduce((a,b)=>a+b.amount,0);
+  const payments=window.LEDGER_ENTRIES.filter(e=>e.amount<0).reduce((a,b)=>a+Math.abs(b.amount),0);
+  const net=receipts-payments;
+  const r=document.getElementById('ldg-receipts');const p=document.getElementById('ldg-payments');const n=document.getElementById('ldg-net');
+  if(r)r.textContent='₹'+(receipts/100000).toFixed(1)+'L';
+  if(p)p.textContent='₹'+(payments/100000).toFixed(1)+'L';
+  if(n)n.textContent=(net>=0?'+':'')+'₹'+(net/100000).toFixed(1)+'L';
+  wrap.innerHTML=`<table><thead><tr><th>Date</th><th>Description</th><th>Project</th><th>Type</th><th>Amount (₹)</th><th>Party</th><th>Action</th></tr></thead>
+  <tbody>${window.LEDGER_ENTRIES.map(t=>`<tr>
+    <td style="color:var(--text2);white-space:nowrap">${t.date}</td>
+    <td>${t.desc}</td>
+    <td><span class="tag tag-orange" style="font-size:10px">${t.project||'—'}</span></td>
+    <td><span class="tag tag-blue" style="font-size:10px">${t.type}</span></td>
+    <td style="font-weight:700;color:${t.amount>=0?'var(--green)':'var(--red)'};text-align:right">${t.amount>=0?'+':''}₹${Math.abs(t.amount).toLocaleString('en-IN')}</td>
+    <td style="color:var(--text2)">${t.party||'—'}</td>
+    <td>
+      <button class="btn-secondary btn-xs" onclick="openEditTransaction('${t.id}')">✏️</button>
+      <button class="btn-secondary btn-xs" style="color:var(--red)" onclick="deleteTransaction('${t.id}')">🗑️</button>
+    </td>
+  </tr>`).join('')}</tbody></table>`;
+}
+function openAddTransaction(existing){
+  const t=existing||{};
+  openModal(existing?'Edit Transaction':'Add Transaction',`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Date</label><input id="lt-date" type="date" value="${t.date||new Date().toISOString().split('T')[0]}"/></div>
+      <div class="form-row"><label>Type</label>
+        <select id="lt-type">${['Receipt','Payment','Expense','Invoice','Salary','Contractor Payment'].map(s=>`<option${s===t.type?' selected':''}>${s}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="form-row"><label>Description</label><input id="lt-desc" value="${t.desc||''}" placeholder="Transaction description"/></div>
+    <div class="row2">
+      <div class="form-row"><label>Project Code</label><select id="lt-project">${getProjectCodeOptions()}</select></div>
+      <div class="form-row"><label>Amount (₹) — positive=receipt, negative=payment</label><input id="lt-amount" type="number" value="${t.amount||0}"/></div>
+    </div>
+    <div class="form-row"><label>Party (Vendor/Client)</label><input id="lt-party" value="${t.party||''}"/></div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveTransaction('${t.id||''}')">Save</button></div>
+  </div>`);
+  // set project select value
+  setTimeout(()=>{const s=document.getElementById('lt-project');if(s&&t.project){const opt=Array.from(s.options).find(o=>o.value===t.project);if(opt)opt.selected=true;}},50);
+}
+function saveTransaction(existingId){
+  const date=document.getElementById('lt-date')?.value;
+  const type=document.getElementById('lt-type')?.value;
+  const desc=document.getElementById('lt-desc')?.value.trim();
+  const project=document.getElementById('lt-project')?.value;
+  const amount=parseFloat(document.getElementById('lt-amount')?.value)||0;
+  const party=document.getElementById('lt-party')?.value.trim();
+  if(!desc){showToast('Enter description','info');return;}
+  if(existingId){
+    const idx=window.LEDGER_ENTRIES.findIndex(e=>e.id===existingId);
+    if(idx>=0)window.LEDGER_ENTRIES[idx]={id:existingId,date,desc,project,type,amount,party};
+  } else {
+    window.LEDGER_ENTRIES.push({id:'L'+Date.now(),date,desc,project,type,amount,party});
+  }
+  saveLedger();closeModal();renderLedger();showToast('Transaction saved','success');
+}
+function openEditTransaction(id){const t=window.LEDGER_ENTRIES.find(e=>e.id===id);if(t)openAddTransaction(t);}
+function deleteTransaction(id){
+  if(!confirm('Delete this entry?'))return;
+  window.LEDGER_ENTRIES=window.LEDGER_ENTRIES.filter(e=>e.id!==id);
+  saveLedger();renderLedger();showToast('Deleted','info');
+}
+function exportLedger(){
+  exportToExcel(window.LEDGER_ENTRIES.map(e=>({Date:e.date,Description:e.desc,Project:e.project,Type:e.type,Amount:e.amount,Party:e.party})),'1WC_Ledger','Ledger');
+}
+function renderPL(){
+  const wrap=document.getElementById('pl-table-wrap');
+  if(!wrap)return;
+  const rows=SITES.filter(s=>s.status!=='upcoming').map(s=>{
+    const d=window.PROJECT_PL[s.code]||{billed:0,received:0,material:0,labour:0,pettyCash:0};
+    const margin=d.billed-d.material-d.labour-d.pettyCash;
+    return`<tr>
+      <td><div style="font-weight:600">${s.name}</div><div style="font-size:10px;color:var(--orange)">${s.code}</div></td>
+      <td style="color:var(--blue)">₹${(d.billed/100000).toFixed(1)}L</td>
+      <td style="color:var(--green)">₹${(d.received/100000).toFixed(1)}L</td>
+      <td style="color:var(--text2)">₹${(d.material/100000).toFixed(1)}L</td>
+      <td style="color:var(--text2)">₹${(d.labour/100000).toFixed(1)}L</td>
+      <td style="color:var(--text2)">₹${(d.pettyCash/100000).toFixed(1)}L</td>
+      <td style="color:${margin>=0?'var(--green)':'var(--red)'}">₹${(margin/100000).toFixed(1)}L</td>
+      <td>${s.health==='green'?'🟢':s.health==='yellow'?'🟡':'🔴'}</td>
+    </tr>`;}).join('');
+  wrap.innerHTML=`<table><thead><tr><th>Site</th><th>Billed</th><th>Received</th><th>Material</th><th>Labour</th><th>Petty Cash</th><th>Margin</th><th>Health</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function openEditPL(){
+  const s0=SITES.filter(x=>x.status!=='upcoming')[0];
+  if(!s0)return;
+  const rows=SITES.filter(x=>x.status!=='upcoming').map(s=>{
+    const d=window.PROJECT_PL[s.code]||{billed:0,received:0,material:0,labour:0,pettyCash:0};
+    return `<tr><td style="font-weight:600;white-space:nowrap">${s.name}</td>
+      ${['billed','received','material','labour','pettyCash'].map(k=>`<td><input data-site="${s.code}" data-field="${k}" type="number" value="${d[k]||0}" style="width:80px;padding:4px;border:1px solid var(--border);border-radius:4px;background:var(--navy2);color:var(--text)"/></td>`).join('')}
+    </tr>`;}).join('');
+  openModal('Edit Project P&L',`<div style="overflow-x:auto"><table><thead><tr><th>Site</th><th>Billed</th><th>Received</th><th>Material</th><th>Labour</th><th>Petty Cash</th></tr></thead><tbody>${rows}</tbody></table></div>
+  <div class="btn-row"><button class="btn-primary" onclick="savePLEdits()">Save All</button></div>`);
+}
+function savePLEdits(){
+  document.querySelectorAll('[data-site][data-field]').forEach(inp=>{
+    const site=inp.dataset.site;const field=inp.dataset.field;
+    if(!window.PROJECT_PL[site])window.PROJECT_PL[site]={billed:0,received:0,material:0,labour:0,pettyCash:0};
+    window.PROJECT_PL[site][field]=parseFloat(inp.value)||0;
+  });
+  saveProjectPL();closeModal();renderPL();showToast('P&L updated','success');
+}
+function exportPL(){
+  const rows=SITES.filter(s=>s.status!=='upcoming').map(s=>{
+    const d=window.PROJECT_PL[s.code]||{};
+    const margin=(d.billed||0)-(d.material||0)-(d.labour||0)-(d.pettyCash||0);
+    return{Site:s.name,Code:s.code,Billed:d.billed||0,Received:d.received||0,Material:d.material||0,Labour:d.labour||0,Petty_Cash:d.pettyCash||0,Margin:margin};
+  });
+  exportToExcel(rows,'1WC_ProjectPL','Project PL');
+}
+function renderContractors(){
+  const wrap=document.getElementById('contractor-table-wrap');
+  if(!wrap)return;
+  wrap.innerHTML=`<table><thead><tr><th>Contractor</th><th>Site</th><th>Total Bill</th><th>Advance</th><th>Balance</th><th>Formal Sal.</th><th>Cash Actual</th><th>Action</th></tr></thead>
+  <tbody>${window.CONTRACTORS.map(c=>`<tr>
+    <td style="font-weight:600">${c.name}</td>
+    <td><span class="tag tag-blue">${c.site}</span></td>
+    <td style="color:var(--blue)">₹${Number(c.totalBill||0).toLocaleString('en-IN')}</td>
+    <td style="color:var(--orange)">₹${Number(c.advance||0).toLocaleString('en-IN')}</td>
+    <td style="color:var(--green)">₹${Number((c.totalBill||0)-(c.advance||0)).toLocaleString('en-IN')}</td>
+    <td style="color:var(--text2);font-size:11px">₹${Number(c.formalSalary||0).toLocaleString('en-IN')}</td>
+    <td style="color:var(--text2);font-size:11px">₹${Number(c.actualCash||0).toLocaleString('en-IN')}</td>
+    <td>
+      <button class="btn-secondary btn-xs" onclick="openContractorPayment('${c.name}','${c.site}')">+ Payment</button>
+      <button class="btn-secondary btn-xs" onclick="openEditContractor('${c.id}')">✏️</button>
+      <button class="btn-secondary btn-xs" style="color:var(--red)" onclick="deleteContractor('${c.id}')">🗑️</button>
+    </td>
+  </tr>`).join('')}</tbody></table>`;
+}
+function openAddContractor(existing){
+  const ct=existing||{};
+  openModal(existing?'Edit Contractor':'Add Contractor',`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Name</label><input id="ct-name" value="${ct.name||''}"/></div>
+      <div class="form-row"><label>Site</label><input id="ct-site" value="${ct.site||''}"/></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Total Bill (₹)</label><input id="ct-bill" type="number" value="${ct.totalBill||0}"/></div>
+      <div class="form-row"><label>Advance Paid (₹)</label><input id="ct-adv" type="number" value="${ct.advance||0}"/></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Formal Salary (₹)</label><input id="ct-formal" type="number" value="${ct.formalSalary||0}"/></div>
+      <div class="form-row"><label>Actual Cash (₹)</label><input id="ct-cash" type="number" value="${ct.actualCash||0}"/></div>
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveContractor('${ct.id||''}')">Save</button></div>
+  </div>`);
+}
+function saveContractor(existingId){
+  const name=document.getElementById('ct-name')?.value.trim();
+  const site=document.getElementById('ct-site')?.value.trim();
+  const totalBill=parseFloat(document.getElementById('ct-bill')?.value)||0;
+  const advance=parseFloat(document.getElementById('ct-adv')?.value)||0;
+  const formalSalary=parseFloat(document.getElementById('ct-formal')?.value)||0;
+  const actualCash=parseFloat(document.getElementById('ct-cash')?.value)||0;
+  if(!name){showToast('Enter contractor name','info');return;}
+  if(existingId){
+    const idx=window.CONTRACTORS.findIndex(c=>c.id===existingId);
+    if(idx>=0)window.CONTRACTORS[idx]={...window.CONTRACTORS[idx],name,site,totalBill,advance,formalSalary,actualCash};
+  } else {
+    window.CONTRACTORS.push({id:'c'+Date.now(),name,site,totalBill,advance,formalSalary,actualCash});
+  }
+  saveContractors();closeModal();renderContractors();showToast('Contractor saved','success');
+}
+function openEditContractor(id){const c=window.CONTRACTORS.find(x=>x.id===id);if(c)openAddContractor(c);}
+function deleteContractor(id){
+  if(!confirm('Remove contractor?'))return;
+  window.CONTRACTORS=window.CONTRACTORS.filter(c=>c.id!==id);
+  saveContractors();renderContractors();showToast('Removed','info');
+}
+function exportContractors(){
+  exportToExcel(window.CONTRACTORS.map(c=>({Name:c.name,Site:c.site,Total_Bill:c.totalBill,Advance:c.advance,Balance:(c.totalBill||0)-(c.advance||0),Formal_Salary:c.formalSalary,Actual_Cash:c.actualCash})),'1WC_Contractors','Contractors');
+}
+window._pendingLedgerImport=[];
+function previewLedgerImport(inp){
+  if(!inp.files[0])return;
+  importFromExcel(inp.files[0],function(rows){
+    window._pendingLedgerImport=rows;
+    const prev=document.getElementById('ledger-import-preview');
+    const act=document.getElementById('ledger-import-actions');
+    if(!prev)return;
+    if(!rows.length){prev.innerHTML='<div class="warn-box">No rows found in this file</div>';return;}
+    prev.innerHTML=`<div class="info-box">${rows.length} rows detected. Preview (first 5):</div>
+    <div style="overflow-x:auto"><table><thead><tr>${Object.keys(rows[0]).map(k=>`<th>${k}</th>`).join('')}</tr></thead>
+    <tbody>${rows.slice(0,5).map(r=>`<tr>${Object.values(r).map(v=>`<td style="font-size:11px">${v}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    if(act)act.style.display='block';
+  });
+}
+function confirmLedgerImport(){
+  const rows=window._pendingLedgerImport||[];
+  let added=0;
+  rows.forEach(r=>{
+    window.LEDGER_ENTRIES.push({
+      id:'IMP'+Date.now()+'_'+(added++),
+      date:r.date||r.Date||new Date().toISOString().split('T')[0],
+      desc:r.desc||r.Description||r.description||'',
+      project:r.project||r.Project||'',
+      type:r.type||r.Type||'Entry',
+      amount:parseFloat(r.amount||r.Amount)||0,
+      party:r.party||r.Party||''
+    });
+  });
+  saveLedger();
+  document.getElementById('ledger-import-preview').innerHTML=`<div class="info-box" style="color:var(--green)">✅ ${added} rows imported to Ledger</div>`;
+  document.getElementById('ledger-import-actions').style.display='none';
+  showToast(added+' rows imported','success');
+}
+
 // ======================== PURCHASE PAGE ========================
 function pagePurchase(){
   return `
@@ -1587,63 +2025,15 @@ function pagePurchase(){
     <div class="tab" onclick="switchTab(this,'pur-tab','pur-approval')">PO Approval Status</div>
   </div>
   <div class="pur-tab" id="pur-requests">
-    ${[
-      {site:'Perfetti Rudrapur',code:'PERFETTI-RDR',mat:'Armaflex 25mm Insulation',qty:'120 sqm',urgency:'high',by:'Rohtash',date:'Today',status:'RFQ Sent'},
-      {site:'DMRC TKD',code:'DMRC-TKD',mat:'GI Duct Sheet 22 Gauge',qty:'800 kg',urgency:'med',by:'Ajay',date:'Yesterday',status:'PR Received'},
-      {site:'Godrej Nest',code:'GODREJ-NEST',mat:'AHU Filter F7 (6 nos)',qty:'6 Nos',urgency:'low',by:'Vinay',date:'25 Sep',status:'Ordered'},
-      {site:'Bijwasan Ducting',code:'BIJWASAN-D',mat:'GI Duct Sheet 24 Gauge',qty:'500 kg',urgency:'med',by:'Parvez',date:'26 Sep',status:'PR Received'},
-    ].map(r=>`
-    <div class="card" style="margin-bottom:12px;border-left:4px solid ${r.urgency==='high'?'var(--red)':r.urgency==='med'?'var(--orange)':'var(--green)'}">
-      <div style="display:flex;justify-content:space-between">
-        <div>
-          <div style="font-size:13px;font-weight:700">${r.mat}</div>
-          <div style="font-size:12px;color:var(--text2);margin-top:4px">🏗️ ${r.site} · <span style="color:var(--orange)">${r.code}</span> · Qty: ${r.qty}</div>
-          <div style="font-size:11px;color:var(--text2);margin-top:2px">Requested by ${r.by} · ${r.date}</div>
-        </div>
-        <div style="text-align:right">
-          <div class="tag tag-${r.urgency==='high'?'red':r.urgency==='med'?'orange':'green'}">${r.urgency==='high'?'🔴 Urgent':r.urgency==='med'?'🟡 Normal':'🟢 Low'}</div>
-          <div class="tag tag-blue" style="margin-top:4px">${r.status}</div>
-        </div>
-      </div>
-      <div class="btn-row" style="margin-top:12px">
-        <button class="btn-primary btn-sm" onclick="showPage('rfq')">Generate RFQ</button>
-        <button class="btn-secondary btn-sm" onclick="showPage('vendor-compare')">Compare Vendors</button>
-        <button class="btn-secondary btn-sm" onclick="showToast('PO prepared for approval','info')">Prepare PO</button>
-      </div>
-    </div>`).join('')}
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn-primary btn-sm" onclick="openNewPRInline()">+ New PR</button></div>
+    <div id="pr-cards-wrap"></div>
   </div>
   <div class="pur-tab" id="pur-vendors" style="display:none">
     <div class="btn-row" style="margin-bottom:16px">
       <button class="btn-primary" onclick="openAddVendor()">+ Add Vendor</button>
-      <button class="btn-secondary" onclick="showToast('🤖 AI Vendor Finder – tell me what material you need','info')">🤖 AI Find Vendor</button>
+      <button class="btn-secondary" onclick="exportToExcel(window.VENDORS.map(v=>({Name:v.name,Category:v.cat,City:v.city,Rating:v.rating,Contact:v.contact})),'1WC_Vendors','Vendors')">📥 Export</button>
     </div>
-    <div class="card">
-      <div class="card-title">Vendor Database</div>
-      <table>
-        <thead><tr><th>Vendor</th><th>Category</th><th>City</th><th>Rating</th><th>Contact</th><th>Action</th></tr></thead>
-        <tbody>
-        ${[
-          {name:'Systemair India',cat:'AHU / Fan Coil Units',city:'Delhi',rating:'⭐⭐⭐⭐⭐',contact:'9811XXXXX1'},
-          {name:'Zeco Aircon',cat:'Grilles / Diffusers',city:'Delhi',rating:'⭐⭐⭐⭐',contact:'9811XXXXX2'},
-          {name:'Jindal Steel',cat:'GI Duct Sheets',city:'Hisar',rating:'⭐⭐⭐⭐',contact:'9811XXXXX3'},
-          {name:'Thermoflex India',cat:'Insulation – Armaflex',city:'Gurgaon',rating:'⭐⭐⭐⭐',contact:'9811XXXXX4'},
-          {name:'Aeroflex',cat:'Insulation – Premium',city:'Delhi',rating:'⭐⭐⭐⭐⭐',contact:'9811XXXXX5'},
-          {name:'K-Flex India',cat:'Insulation',city:'Noida',rating:'⭐⭐⭐',contact:'9811XXXXX6'},
-          {name:'ABB India',cat:'Electrical / Panels',city:'Gurgaon',rating:'⭐⭐⭐⭐',contact:'9811XXXXX7'},
-          {name:'Honeywell BMS',cat:'Controls / Sensors',city:'Delhi',rating:'⭐⭐⭐⭐⭐',contact:'9811XXXXX8'},
-        ].map(v=>`<tr>
-          <td style="font-weight:600">${v.name}</td>
-          <td><span class="tag tag-blue">${v.cat}</span></td>
-          <td>${v.city}</td>
-          <td>${v.rating}</td>
-          <td style="color:var(--text2);font-size:11px">${v.contact}</td>
-          <td>
-            <button class="btn-secondary btn-xs" onclick="showToast('RFQ drafted for ${v.name}','info')">Send RFQ</button>
-          </td>
-        </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
+    <div class="card" id="vendor-db-wrap"></div>
   </div>
   <div class="pur-tab" id="pur-new" style="display:none">
     <div class="card eod-form">
@@ -1700,23 +2090,130 @@ function pagePurchase(){
     </div>`).join('')}
   </div>`;
 }
-function openAddVendor(){
-  openModal('Add New Vendor',`<div class="eod-form">
-    <div class="row2">
-      <div class="form-row"><label>Vendor Name</label><input placeholder="Company name" /></div>
-      <div class="form-row"><label>Category</label><input placeholder="AHU, Insulation, Ducting..." /></div>
+// ======================== PURCHASE HELPERS ========================
+function renderPRCards(){
+  const wrap=document.getElementById('pr-cards-wrap');
+  if(!wrap)return;
+  const statusOpts=['PR Received','RFQ Sent','PO Raised','Ordered','Delivered'];
+  wrap.innerHTML=window.PURCHASE_REQUESTS.map(r=>`
+  <div class="card" style="margin-bottom:12px;border-left:4px solid ${r.urgency==='high'?'var(--red)':r.urgency==='med'?'var(--orange)':'var(--green)'}">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:13px;font-weight:700">${r.mat}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:4px">🏗️ ${r.siteName||r.site} · <span style="color:var(--orange)">${r.site}</span> · Qty: ${r.qty}</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">By ${r.by} · ${r.date}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+        <div class="tag tag-${r.urgency==='high'?'red':r.urgency==='med'?'orange':'green'}">${r.urgency==='high'?'🔴 Urgent':r.urgency==='med'?'🟡 Normal':'🟢 Low'}</div>
+        <select onchange="updatePRStatus('${r.id}',this.value)" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-size:11px">
+          ${statusOpts.map(s=>`<option${s===r.status?' selected':''}>${s}</option>`).join('')}
+        </select>
+      </div>
     </div>
-    <div class="row2">
-      <div class="form-row"><label>Contact Person</label><input placeholder="Name" /></div>
-      <div class="form-row"><label>Mobile</label><input type="tel" placeholder="+91..." /></div>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn-primary btn-sm" onclick="showPage('rfq')">Generate RFQ</button>
+      <button class="btn-secondary btn-sm" onclick="showPage('vendor-compare')">Compare Vendors</button>
+      <button class="btn-secondary btn-sm" style="color:var(--red)" onclick="deletePR('${r.id}')">🗑️ Delete</button>
     </div>
-    <div class="form-row"><label>City</label><input placeholder="City" /></div>
-    <div class="form-row"><label>Email</label><input type="email" placeholder="vendor@email.com" /></div>
-    <div class="btn-row"><button class="btn-primary" onclick="showToast('✅ Vendor added to database','success');closeModal()">Add Vendor</button></div>
+  </div>`).join('')||'<div class="info-box">No PRs yet. Click + New PR to add one.</div>';
+}
+function updatePRStatus(id,status){
+  const idx=window.PURCHASE_REQUESTS.findIndex(r=>r.id===id);
+  if(idx>=0){window.PURCHASE_REQUESTS[idx].status=status;savePRs();showToast('Status updated: '+status,'success');}
+}
+function deletePR(id){
+  if(!confirm('Delete this PR?'))return;
+  window.PURCHASE_REQUESTS=window.PURCHASE_REQUESTS.filter(r=>r.id!==id);
+  savePRs();renderPRCards();showToast('PR deleted','info');
+}
+function openNewPRInline(){
+  openModal('New Purchase Request',`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Site / Project</label><select id="pr-site2">${getProjectCodeOptions(false)}</select></div>
+      <div class="form-row"><label>Required By</label><input id="pr-date2" type="date"/></div>
+    </div>
+    <div class="form-row"><label>Material / Description</label><textarea id="pr-desc2" rows="2" placeholder="With specs..."></textarea></div>
+    <div class="row2">
+      <div class="form-row"><label>Qty + Unit</label><input id="pr-qty2" placeholder="100 sqm, 5 Nos..."/></div>
+      <div class="form-row"><label>Urgency</label>
+        <select id="pr-urg2"><option value="high">🔴 Urgent</option><option value="med" selected>🟡 Normal</option><option value="low">🟢 Low</option></select>
+      </div>
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveNewPR()">Submit PR</button></div>
   </div>`);
 }
+function saveNewPR(){
+  const site=document.getElementById('pr-site2')?.value;
+  const date=document.getElementById('pr-date2')?.value;
+  const desc=document.getElementById('pr-desc2')?.value.trim();
+  const qty=document.getElementById('pr-qty2')?.value.trim();
+  const urgency=document.getElementById('pr-urg2')?.value||'med';
+  if(!desc||!site){showToast('Fill site and material description','info');return;}
+  const siteObj=SITES.find(s=>s.code===site);
+  window.PURCHASE_REQUESTS.push({id:'PR'+Date.now(),site,siteName:siteObj?siteObj.name:site,mat:desc,qty:qty||'1 unit',urgency,by:(window.USERS&&window.USERS[CU])?window.USERS[CU].name:CU||'Me',date:date||new Date().toISOString().split('T')[0],status:'PR Received'});
+  savePRs();closeModal();renderPRCards();showToast('PR submitted','success');
+}
+function renderVendorDB(){
+  const wrap=document.getElementById('vendor-db-wrap');
+  if(!wrap)return;
+  const stars=n=>'⭐'.repeat(Math.round(n||0));
+  wrap.innerHTML=`<div class="card-title">Vendor Database (${window.VENDORS.length})</div>
+  <table><thead><tr><th>Vendor</th><th>Category</th><th>City</th><th>Rating</th><th>Contact</th><th>Action</th></tr></thead>
+  <tbody>${window.VENDORS.map(v=>`<tr>
+    <td style="font-weight:600">${v.name}</td>
+    <td><span class="tag tag-blue">${v.cat}</span></td>
+    <td>${v.city}</td>
+    <td>${stars(v.rating)}</td>
+    <td style="color:var(--text2);font-size:11px">${v.contact}</td>
+    <td>
+      <button class="btn-secondary btn-xs" onclick="showToast('RFQ drafted for ${v.name}','info')">Send RFQ</button>
+      <button class="btn-secondary btn-xs" onclick="openEditVendor('${v.id}')">✏️</button>
+      <button class="btn-secondary btn-xs" style="color:var(--red)" onclick="deleteVendor('${v.id}')">🗑️</button>
+    </td>
+  </tr>`).join('')}</tbody></table>`;
+}
+function openAddVendor(existing){
+  const v=existing||{};
+  openModal(existing?'Edit Vendor':'Add New Vendor',`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Vendor Name</label><input id="v-name" value="${v.name||''}" placeholder="Company name" /></div>
+      <div class="form-row"><label>Category</label><input id="v-cat" value="${v.cat||''}" placeholder="AHU, Insulation..." /></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>City</label><input id="v-city" value="${v.city||''}" placeholder="City" /></div>
+      <div class="form-row"><label>Rating (1-5)</label><input id="v-rating" type="number" min="1" max="5" value="${v.rating||4}" /></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Mobile</label><input id="v-contact" value="${v.contact||''}" type="tel" placeholder="+91..." /></div>
+      <div class="form-row"><label>Email</label><input id="v-email" value="${v.email||''}" type="email" placeholder="vendor@email.com" /></div>
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveVendor('${v.id||''}')">Save Vendor</button></div>
+  </div>`);
+}
+function saveVendor(existingId){
+  const name=document.getElementById('v-name')?.value.trim();
+  const cat=document.getElementById('v-cat')?.value.trim();
+  const city=document.getElementById('v-city')?.value.trim();
+  const rating=parseFloat(document.getElementById('v-rating')?.value)||4;
+  const contact=document.getElementById('v-contact')?.value.trim();
+  const email=document.getElementById('v-email')?.value.trim();
+  if(!name){showToast('Enter vendor name','info');return;}
+  if(existingId){
+    const idx=window.VENDORS.findIndex(v=>v.id===existingId);
+    if(idx>=0)window.VENDORS[idx]={...window.VENDORS[idx],name,cat,city,rating,contact,email};
+  } else {
+    window.VENDORS.push({id:'v'+Date.now(),name,cat,city,rating,contact,email});
+  }
+  saveVendors();closeModal();renderVendorDB();showToast('Vendor saved','success');
+}
+function openEditVendor(id){const v=window.VENDORS.find(x=>x.id===id);if(v)openAddVendor(v);}
+function deleteVendor(id){
+  if(!confirm('Remove vendor?'))return;
+  window.VENDORS=window.VENDORS.filter(v=>v.id!==id);
+  saveVendors();renderVendorDB();showToast('Removed','info');
+}
 function pageVendorCompare(){
-  const vc = VENDOR_COMPARISONS[0]||{item:'12000 CFM AHU (Daikin/Blue Star)',quotes:[
+  const vc = window.VC_LIST&&window.VC_LIST.length?window.VC_LIST[0]:{item:'12000 CFM AHU (Daikin/Blue Star)',quotes:[
     {vendor:'Greenfield HVAC',technical:{make:'Daikin VRV',cop:3.8,warranty:'2yr',delivery:'4 wk'},commercial:{price:4850000,gst:18,terms:'30% advance',validity:'30 days'},rating:4.2},
     {vendor:'Arctic Systems',technical:{make:'Blue Star Cassette',cop:3.5,warranty:'1yr',delivery:'6 wk'},commercial:{price:4620000,gst:18,terms:'50% advance',validity:'15 days'},rating:3.8},
     {vendor:'Cool-Tech Engg',technical:{make:'Daikin Split',cop:3.6,warranty:'2yr',delivery:'3 wk'},commercial:{price:4710000,gst:18,terms:'20% advance',validity:'45 days'},rating:4.5}
@@ -1730,12 +2227,12 @@ function pageVendorCompare(){
         <div style="color:var(--text2);font-size:13px">Site: DMRC-TKD · PR#: PR-001 · 3 quotes received</div>
       </div>
       <div class="btn-row">
-        <button class="btn-secondary" onclick="showToast('Comparison exported to PDF','success')">📄 Export PDF</button>
-        <button class="btn-primary" onclick="openModal('Request Additional Quote',\`<div class='eod-form'><div class='form-row'><label>Vendor Name</label><input placeholder='Vendor company'/></div><div class='form-row'><label>Contact</label><input placeholder='Email or phone'/></div><div class='btn-row'><button class='btn-primary' onclick="showToast('RFQ sent','success');closeModal()">Send RFQ</button></div></div>\`)">+ Add Quote</button>
+        <button class="btn-secondary" onclick="downloadVendorComparePDF()">📄 Export PDF</button>
+        <button class="btn-primary" onclick="openNewVCModal()">+ New Comparison</button>
       </div>
     </div>
   </div>
-  <div style="overflow-x:auto;margin-bottom:16px">
+  <div id="vc-table-wrap" style="overflow-x:auto;margin-bottom:16px">
     <table class="data-table">
       <thead><tr>
         <th>Parameter</th>
@@ -1795,6 +2292,56 @@ function pageVendorCompare(){
       </div>
     </div>
   </div>`;
+}
+function openNewVCModal(){
+  openModal('New Vendor Comparison',`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Item / Equipment</label><input id="vc-item" placeholder="e.g. 12000 CFM AHU"/></div>
+      <div class="form-row"><label>Site</label><select id="vc-site">${SITES.map(s=>`<option value="${s.code}">${s.name}</option>`).join('')}</select></div>
+    </div>
+    <div style="font-weight:700;margin:12px 0 8px">Vendor Quotes (add up to 5)</div>
+    <div id="vc-quote-rows">
+      ${[0,1,2].map(i=>`<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:700;color:var(--orange);margin-bottom:6px">Vendor ${i+1}</div>
+        <div class="row2">
+          <div class="form-row"><label>Vendor Name</label><input class="vc-vendor" placeholder="Company"/></div>
+          <div class="form-row"><label>Price (₹ ex-GST)</label><input class="vc-price" type="number" placeholder="0"/></div>
+        </div>
+        <div class="row2">
+          <div class="form-row"><label>Brand/Make</label><input class="vc-make" placeholder="Daikin, Blue Star..."/></div>
+          <div class="form-row"><label>Delivery</label><input class="vc-delivery" placeholder="e.g. 4 weeks"/></div>
+        </div>
+        <div class="row2">
+          <div class="form-row"><label>Payment Terms</label><input class="vc-terms" placeholder="30% advance..."/></div>
+          <div class="form-row"><label>Rating (1-5)</label><input class="vc-rating" type="number" min="1" max="5" value="4"/></div>
+        </div>
+      </div>`).join('')}
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveNewVC()">Create Comparison</button></div>
+  </div>`);
+}
+function saveNewVC(){
+  const item=document.getElementById('vc-item')?.value.trim();
+  const site=document.getElementById('vc-site')?.value;
+  if(!item){showToast('Enter item name','info');return;}
+  const vendors=document.querySelectorAll('#vc-quote-rows > div');
+  const quotes=[];
+  vendors.forEach(row=>{
+    const vendor=row.querySelector('.vc-vendor')?.value.trim();
+    if(!vendor)return;
+    const price=parseFloat(row.querySelector('.vc-price')?.value)||0;
+    const make=row.querySelector('.vc-make')?.value.trim()||'—';
+    const delivery=row.querySelector('.vc-delivery')?.value.trim()||'TBD';
+    const terms=row.querySelector('.vc-terms')?.value.trim()||'TBD';
+    const rating=parseFloat(row.querySelector('.vc-rating')?.value)||4;
+    quotes.push({vendor,rating,technical:{make,cop:'—',warranty:'—',delivery},commercial:{price,gst:18,terms,validity:'30 days'}});
+  });
+  if(!quotes.length){showToast('Add at least one vendor quote','info');return;}
+  window.VC_LIST.unshift({id:'VC'+Date.now(),item,site,date:new Date().toISOString().split('T')[0],quotes});
+  saveVCList();
+  closeModal();
+  showPage('vendor-compare');
+  showToast('Comparison created','success');
 }
 function pageRFQ(){
   c.innerHTML=`
@@ -2101,88 +2648,196 @@ function pageExecution(){
   </div>`;
 }
 function pageAttendance(){
-  const emp=[
-    {id:'ajay',name:'Ajay Kumar',role:'Site Supervisor',salary:28000,wage:0},
-    {id:'fathe',name:'Fathe Mian',role:'Technician',salary:0,wage:650},
-    {id:'raju',name:'Raju Singh',role:'Helper',salary:0,wage:500},
-    {id:'naval',name:'Naval Kishor',role:'Electrician',salary:0,wage:600},
-    {id:'worker1',name:'Ram Babu',role:'Labour',salary:0,wage:450},
-    {id:'worker2',name:'Shyam Lal',role:'Labour',salary:0,wage:450},
-  ];
-  const days=Array.from({length:27},(_,i)=>i+1);
-  const att={ajay:{1:'P',2:'P',3:'P',4:'W',5:'P',6:'P',7:'H',8:'P',9:'P',10:'P'},fathe:{1:'P',2:'A',3:'P',4:'W',5:'P',6:'P',7:'H',8:'P',9:'P',10:'P'}};
   const statusColors={P:'var(--green)',A:'var(--red)',W:'#999',H:'var(--blue)',O:'var(--orange)',OT:'var(--purple)'};
+  const today=new Date();
+  const defaultMonth=today.toISOString().substr(0,7);
+  const site0=window.ATT_SITES[0]?window.ATT_SITES[0].code:'';
   c.innerHTML=`
-  <div class="page-title">📋 Attendance Register</div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div class="page-title" style="margin:0">📋 Attendance Register</div>
+    <div class="btn-row" style="margin:0">
+      <button class="btn-primary btn-sm" onclick="openAddEmployee()">+ Add Employee</button>
+      <button class="btn-secondary btn-sm" onclick="openAddAttSite()">+ Add Site</button>
+      <button class="btn-secondary btn-sm" onclick="attExportExcel()">📥 Export Excel</button>
+      <button class="btn-secondary btn-sm" onclick="downloadAttendancePDF()">📄 PDF</button>
+      <button class="btn-primary btn-sm" onclick="attSaveToCloud()">☁️ Save to Cloud</button>
+    </div>
+  </div>
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-      <select id="att-site" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2)">
-        ${SITES.filter(s=>s.status==='active').map(s=>`<option value="${s.code}">${s.name}</option>`).join('')}
+      <select id="att-site" onchange="renderAttGrid()" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text)">
+        ${window.ATT_SITES.map(s=>`<option value="${s.code}">${s.name} (${s.code})</option>`).join('')}
       </select>
-      <input id="att-date" type="month" value="2026-09" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2)"/>
+      <input id="att-month" type="month" value="${defaultMonth}" onchange="renderAttGrid()" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text)"/>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${Object.entries({P:'Present',A:'Absent',W:'Week Off',H:'Holiday',O:'OT Only',OT:'OT+'}).map(([k,v])=>`
+        ${Object.entries({P:'Present',A:'Absent',W:'Week Off',H:'Holiday',OT:'OT+'}).map(([k,v])=>`
         <span style="background:${statusColors[k]}22;color:${statusColors[k]};padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700">${k}=${v}</span>`).join('')}
       </div>
     </div>
   </div>
-  <div style="overflow-x:auto;margin-bottom:16px">
-    <table style="border-collapse:collapse;font-size:12px;min-width:800px;width:100%">
-      <thead>
-        <tr style="background:var(--navy);color:#fff">
-          <th style="padding:8px 10px;text-align:left;position:sticky;left:0;background:var(--navy)">Employee</th>
-          ${days.map(d=>`<th style="padding:4px 6px;text-align:center;min-width:28px">${d}</th>`).join('')}
-          <th style="padding:8px 6px;text-align:center">P</th>
-          <th style="padding:8px 6px;text-align:center">A</th>
-          <th style="padding:8px 6px;text-align:center">OT hrs</th>
-          <th style="padding:8px 6px;text-align:right">Wages/Sal</th>
-        </tr>
-      </thead>
-      <tbody id="attendance-body">
-        ${emp.map(e=>{
-          const a=att[e.id]||{};
-          let pCount=0,aCount=0,otHrs=0;
-          return `<tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:8px 10px;position:sticky;left:0;background:var(--bg);white-space:nowrap">
-              <div style="font-weight:600">${e.name}</div>
-              <div style="font-size:10px;color:var(--text2)">${e.role}</div>
-            </td>
-            ${days.map(d=>{
-              const v=a[d]||(d<=27?'P':'');
-              if(v==='P'||v==='OT')pCount++;
-              if(v==='A')aCount++;
-              return `<td style="text-align:center;padding:2px">
-                <select style="font-size:10px;padding:1px;border:none;background:${v?statusColors[v]+'22':'transparent'};color:${v?statusColors[v]:'var(--text2)'};border-radius:4px;width:28px;text-align:center" onchange="showToast('Saved','success')">
-                  ${['P','A','W','H','O','OT'].map(opt=>`<option value="${opt}" ${v===opt?'selected':''}>${opt}</option>`).join('')}
-                </select>
-              </td>`;
-            }).join('')}
-            <td style="text-align:center;font-weight:700;color:var(--green)">${pCount}</td>
-            <td style="text-align:center;font-weight:700;color:var(--red)">${aCount}</td>
-            <td style="text-align:center"><input type="number" min="0" value="0" style="width:40px;border:1px solid var(--border);border-radius:4px;text-align:center;padding:2px"/></td>
-            <td style="text-align:right;font-weight:700;padding:8px 10px">
-              ${e.salary?`₹${(e.salary/1000).toFixed(0)}K/mo`:`₹${e.wage}/day`}
-            </td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>
-  </div>
-  <div class="card" style="margin-bottom:16px">
-    <div style="font-weight:700;margin-bottom:10px">Multi-Site Assignment (One Person → Multiple Sites)</div>
-    <div style="font-size:13px;color:var(--text2);margin-bottom:8px">e.g. Fathe works DMRC-TKD Mon-Wed, LG Noida Thu-Fri</div>
-    <table class="data-table" style="font-size:13px">
-      <thead><tr><th>Employee</th><th>Site 1</th><th>Days</th><th>Site 2</th><th>Days</th><th>Action</th></tr></thead>
-      <tbody>
-        <tr><td>Fathe Mian</td><td>DMRC-TKD</td><td>Mon,Tue,Wed</td><td>LG Noida</td><td>Thu,Fri</td><td><button class="btn-secondary btn-xs" onclick="showToast('Assignment updated','success')">Edit</button></td></tr>
-      </tbody>
-    </table>
-    <button class="btn-primary btn-xs" style="margin-top:10px" onclick="openMultiSiteModal()">+ Add Multi-Site</button>
-  </div>
-  <div class="btn-row">
-    <button class="btn-primary" onclick="saveAttendance()">💾 Save Attendance</button>
-    <button class="btn-secondary" onclick="showToast('Exported to Excel','success')">📥 Export Excel</button>
-  </div>`;
+  <div id="att-table-wrap" style="overflow-x:auto;margin-bottom:16px"></div>
+  <div class="card" id="att-wages-summary" style="margin-bottom:16px"></div>`;
+  renderAttGrid();
+}
+function getDaysInMonth(monthStr){
+  const [y,m]=monthStr.split('-').map(Number);
+  return new Date(y,m,0).getDate();
+}
+function attKey(){
+  const site=document.getElementById('att-site')?.value||'';
+  const month=document.getElementById('att-month')?.value||'';
+  return '1wc_attendance_'+site+'_'+month;
+}
+function loadAttData(){
+  try{const s=localStorage.getItem(attKey());if(s)return JSON.parse(s);}catch(e){}return{};
+}
+function saveAttData(data){
+  try{localStorage.setItem(attKey(),JSON.stringify(data));}catch(e){}
+}
+function renderAttGrid(){
+  const wrap=document.getElementById('att-table-wrap');
+  const summary=document.getElementById('att-wages-summary');
+  if(!wrap)return;
+  const monthStr=document.getElementById('att-month')?.value||new Date().toISOString().substr(0,7);
+  const numDays=getDaysInMonth(monthStr);
+  const days=Array.from({length:numDays},(_,i)=>i+1);
+  const attData=loadAttData();
+  const statusColors={P:'var(--green)',A:'var(--red)',W:'#999',H:'var(--blue)',O:'var(--orange)',OT:'var(--purple)'};
+  let totalWages=0;
+  const rows=window.ATT_EMPLOYEES.map(e=>{
+    const eAtt=attData[e.id]||{};
+    let pCount=0,aCount=0;
+    const cells=days.map(d=>{
+      const v=eAtt[d]||'A';
+      if(v==='P'||v==='OT')pCount++;
+      else if(v==='A')aCount++;
+      return `<td style="text-align:center;padding:1px">
+        <select data-emp="${e.id}" data-day="${d}" onchange="attCellChange(this)" style="font-size:10px;padding:1px 0;border:1px solid var(--border);background:${statusColors[v]||'#666'}22;color:${statusColors[v]||'var(--text)'};border-radius:3px;width:32px;cursor:pointer">
+          ${['P','A','W','H','O','OT'].map(opt=>`<option value="${opt}"${v===opt?' selected':''}>${opt}</option>`).join('')}
+        </select>
+      </td>`;
+    }).join('');
+    let wages=0;
+    if(e.wageType==='salary') wages=e.wage;
+    else wages=pCount*e.wage;
+    totalWages+=wages;
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px 10px;white-space:nowrap;min-width:140px">
+        <div style="font-weight:600">${e.name}</div>
+        <div style="font-size:10px;color:var(--text2)">${e.role} · ${e.wageType==='salary'?'₹'+e.wage+'/mo':'₹'+e.wage+'/day'}</div>
+      </td>
+      ${cells}
+      <td style="text-align:center;font-weight:700;color:var(--green);padding:4px 6px">${pCount}</td>
+      <td style="text-align:center;font-weight:700;color:var(--red);padding:4px 6px">${aCount}</td>
+      <td style="text-align:right;font-weight:700;padding:4px 10px;color:var(--gold)">₹${wages.toLocaleString('en-IN')}</td>
+      <td style="text-align:center;padding:4px 6px"><button onclick="deleteEmployee('${e.id}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px" title="Remove">🗑️</button></td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML=`<table style="border-collapse:collapse;font-size:11px;width:100%;min-width:${140+numDays*34+200}px">
+    <thead><tr style="background:var(--navy3)">
+      <th style="padding:8px 10px;text-align:left">Employee</th>
+      ${days.map(d=>`<th style="padding:4px 3px;text-align:center;font-weight:700">${d}</th>`).join('')}
+      <th style="padding:4px 6px;text-align:center;color:var(--green)">P</th>
+      <th style="padding:4px 6px;text-align:center;color:var(--red)">A</th>
+      <th style="padding:4px 10px;text-align:right;color:var(--gold)">Wages</th>
+      <th style="padding:4px 6px;text-align:center"></th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+  if(summary) summary.innerHTML=`<div style="font-weight:700;font-size:15px">💰 Total Wages / Salary Payable: <span style="color:var(--gold)">₹${totalWages.toLocaleString('en-IN')}</span> for ${monthStr}</div>`;
+}
+function attCellChange(sel){
+  const empId=sel.dataset.emp;
+  const day=parseInt(sel.dataset.day);
+  const val=sel.value;
+  const data=loadAttData();
+  if(!data[empId])data[empId]={};
+  data[empId][day]=val;
+  saveAttData(data);
+  // recolor
+  const sc={P:'var(--green)',A:'var(--red)',W:'#999',H:'var(--blue)',O:'var(--orange)',OT:'var(--purple)'};
+  sel.style.background=(sc[val]||'#666')+'22';
+  sel.style.color=sc[val]||'var(--text)';
+  renderAttGrid();
+}
+function deleteEmployee(id){
+  if(!confirm('Remove this employee from the attendance list?'))return;
+  window.ATT_EMPLOYEES=window.ATT_EMPLOYEES.filter(e=>e.id!==id);
+  saveATTEmployees();
+  renderAttGrid();
+}
+function openAddEmployee(){
+  openModal('Add Employee',`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Full Name</label><input id="emp-name" placeholder="Employee name"/></div>
+      <div class="form-row"><label>Role</label><input id="emp-role" placeholder="Technician, Helper..."/></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Wage Type</label>
+        <select id="emp-wtype" onchange="document.getElementById('emp-wage-lbl').textContent=this.value==='salary'?'Monthly Salary (₹)':'Daily Wage (₹)'">
+          <option value="daily">Daily Wage</option>
+          <option value="salary">Monthly Salary</option>
+        </select>
+      </div>
+      <div class="form-row"><label id="emp-wage-lbl">Daily Wage (₹)</label><input id="emp-wage" type="number" placeholder="500"/></div>
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveNewEmployee()">Add Employee</button></div>
+  </div>`);
+}
+function saveNewEmployee(){
+  const name=document.getElementById('emp-name')?.value.trim();
+  const role=document.getElementById('emp-role')?.value.trim();
+  const wageType=document.getElementById('emp-wtype')?.value||'daily';
+  const wage=parseFloat(document.getElementById('emp-wage')?.value)||0;
+  if(!name){showToast('Enter employee name','info');return;}
+  const id='emp_'+Date.now();
+  window.ATT_EMPLOYEES.push({id,name,role:role||'Worker',wageType,wage});
+  saveATTEmployees();
+  closeModal();
+  renderAttGrid();
+  showToast('Employee added','success');
+}
+function openAddAttSite(){
+  openModal('Add Site',`<div class="eod-form">
+    <div class="form-row"><label>Site Code</label><input id="att-site-code" placeholder="e.g. NEWSITE-01"/></div>
+    <div class="form-row"><label>Site Name</label><input id="att-site-name" placeholder="Full site name"/></div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveNewAttSite()">Add Site</button></div>
+  </div>`);
+}
+function saveNewAttSite(){
+  const code=document.getElementById('att-site-code')?.value.trim().toUpperCase();
+  const name=document.getElementById('att-site-name')?.value.trim();
+  if(!code||!name){showToast('Fill code and name','info');return;}
+  window.ATT_SITES.push({code,name});
+  saveATTSites();
+  closeModal();
+  // refresh site selector
+  const sel=document.getElementById('att-site');
+  if(sel){sel.innerHTML=window.ATT_SITES.map(s=>`<option value="${s.code}">${s.name} (${s.code})</option>`).join('');}
+  showToast('Site added','success');
+}
+function attExportExcel(){
+  const monthStr=document.getElementById('att-month')?.value||'';
+  const site=document.getElementById('att-site')?.value||'';
+  const numDays=getDaysInMonth(monthStr||new Date().toISOString().substr(0,7));
+  const attData=loadAttData();
+  const rows=window.ATT_EMPLOYEES.map(e=>{
+    const eAtt=attData[e.id]||{};
+    const row={Name:e.name,Role:e.role,Wage_Type:e.wageType,Wage:e.wage};
+    let p=0;
+    for(let d=1;d<=numDays;d++){row['D'+d]=eAtt[d]||'A';if(row['D'+d]==='P'||row['D'+d]==='OT')p++;}
+    row.Present=p;
+    row.Total_Wages=e.wageType==='salary'?e.wage:p*e.wage;
+    return row;
+  });
+  exportToExcel(rows,'1WC_Attendance_'+site+'_'+monthStr,'Attendance');
+}
+async function attSaveToCloud(){
+  const data={site:document.getElementById('att-site')?.value,month:document.getElementById('att-month')?.value,employees:window.ATT_EMPLOYEES,attendance:loadAttData()};
+  if(window.fbSaveAttendance){
+    const ok=await window.fbSaveAttendance(data);
+    showToast(ok?'✅ Attendance saved to cloud':'⚠️ Cloud save failed (check connection)','info');
+  } else {showToast('Cloud not available','info');}
 }
 function pageRABilling(){
   c.innerHTML=`
@@ -2249,7 +2904,10 @@ function pageRABilling(){
           <div class="form-row"><label>Retention % (usually 5-10%)</label><input id="ra-retention" type="number" value="10"/></div>
           <div class="form-row"><label>GST %</label><input id="ra-gst" type="number" value="18"/></div>
         </div>
-        <div class="btn-row"><button class="btn-primary" onclick="generateRABill()">Generate RA Bill</button></div>
+        <div class="btn-row">
+          <button class="btn-primary" onclick="generateRABill()">Generate RA Bill</button>
+          <button class="btn-secondary" onclick="downloadRABillPDF()">📄 Download PDF</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2630,7 +3288,7 @@ function pageQuotation(){
     <div class="form-row"><label>Terms & Conditions</label><textarea rows="3" placeholder="Scope inclusions, exclusions...">1. Taxes extra as applicable\n2. Price variation clause as per market\n3. Work to be done during client site working hours</textarea></div>
     <div class="btn-row" style="margin-top:12px">
       <button class="btn-primary" onclick="saveQuotation('${qNo}')">💾 Save Quotation</button>
-      <button class="btn-secondary" onclick="showToast('PDF generated','success')">📄 Download PDF</button>
+      <button class="btn-secondary" onclick="downloadQuotationPDF()">📄 Download PDF</button>
       <button class="btn-secondary" onclick="showToast('Sent via email','success')">📧 Send to Client</button>
     </div>`;
   };
