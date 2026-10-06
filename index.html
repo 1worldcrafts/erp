@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -908,6 +908,17 @@ function importFromExcel(file,callback){
 
 // State
 let CU=null,currentPage='dashboard',sidebarOpen=false;
+// taskIncompleteReasons: {taskKey: {reason, custom, text}} — persisted per user per date
+function loadTaskReasons(){
+  const today=new Date().toISOString().split('T')[0];
+  try{const s=localStorage.getItem('1wc_task_reasons_'+CU+'_'+today);if(s)return JSON.parse(s);}catch(e){}
+  return{};
+}
+function saveTaskReasons(){
+  const today=new Date().toISOString().split('T')[0];
+  try{localStorage.setItem('1wc_task_reasons_'+CU+'_'+today,JSON.stringify(taskReasons));}catch(e){}
+}
+let taskReasons={};  // {taskKey: {reason, customText, taskText}}
 // taskChecked persisted per user per date
 function loadTaskChecked(){
   const today=new Date().toISOString().split('T')[0];
@@ -1029,12 +1040,13 @@ function doLogin(){
   if(!sel){showToast('⚠️ Please select your profile','info');return;}
   CU=sel; window.CU=sel;
   taskChecked=loadTaskChecked(); // restore today's SOP progress
+  taskReasons=loadTaskReasons(); // restore incomplete reasons
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='block';
   initApp();
 }
 function doLogout(){
-  CU=null; window.CU=null; taskChecked={};
+  CU=null; window.CU=null; taskChecked={}; taskReasons={};
   document.getElementById('app').style.display='none';
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('user-select').value='';
@@ -1302,32 +1314,45 @@ async function markDelegatedDone(id){
     showPage('dashboard');
   }
 }
-function eodIncompleteReason(id){
+function eodIncompleteReason(taskKey, taskText){
+  const reasonLabels=['Didn\'t get time – will do tomorrow','No response from other end – will follow up tomorrow','Delegated to someone – awaiting their response','Others (describe below)'];
   openModal('Task Incomplete – Reason',`
-  <div style="font-size:13px;color:var(--text2);margin-bottom:16px">Select reason why this task could not be completed today:</div>
+  <div style="font-size:13px;color:var(--text2);margin-bottom:8px">Why could this task not be completed today?</div>
+  <div style="font-size:12px;font-weight:600;padding:8px 10px;background:var(--navy3);border-radius:6px;margin-bottom:14px;color:var(--text)">${escHtml(taskText||taskKey)}</div>
   <div style="display:flex;flex-direction:column;gap:10px">
-    ${['Didn\'t get time – will do tomorrow','No response from other end – will follow up tomorrow','Delegated to someone – awaiting their response','Others (custom reason)'].map((r,i)=>`
-    <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:var(--navy2);border-radius:8px;cursor:pointer;border:1px solid var(--border)">
+    ${reasonLabels.map((r,i)=>`
+    <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:var(--navy2);border-radius:8px;cursor:pointer;border:1px solid var(--border)" onclick="document.getElementById('inc-custom-wrap').style.display=${i===3?'\'block\'':'\'none\''};this.querySelector('input').checked=true">
       <input type="radio" name="inc-reason" value="${i}" style="margin-top:2px" ${i===0?'checked':''}>
       <span style="font-size:13px">${r}</span>
     </label>`).join('')}
   </div>
-  <div id="inc-custom" style="display:none;margin-top:12px"><textarea class="eod-form" style="width:100%;padding:10px;background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px" rows="2" placeholder="Explain briefly..."></textarea></div>
-  <div class="btn-row" style="margin-top:16px">
-    <button class="btn-primary" onclick="submitIncompleteReason('${id}')">Submit Reason</button>
+  <div id="inc-custom-wrap" style="display:none;margin-top:12px">
+    <textarea id="inc-custom-text" style="width:100%;box-sizing:border-box;padding:10px;background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical" rows="2" placeholder="Explain briefly..."></textarea>
   </div>
-  <script>document.querySelectorAll('input[name="inc-reason"]').forEach((r,i)=>{r.addEventListener('change',()=>{document.getElementById('inc-custom').style.display=i===3?'block':'none';});})<\/script>`);
+  <div class="btn-row" style="margin-top:16px">
+    <button class="btn-primary" onclick="submitIncompleteReason('${taskKey}','${(taskText||taskKey).replace(/'/g,"\\'")}')">Submit Reason</button>
+    <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+  </div>`);
 }
-function submitIncompleteReason(id){
+function submitIncompleteReason(taskKey, taskText){
   const sel=document.querySelector('input[name="inc-reason"]:checked');
   if(!sel){showToast('Select a reason','error');return;}
-  const reasons=['Didn\'t get time – will do tomorrow','No response from other end – will follow up tomorrow','Delegated to someone – awaiting their response','Custom reason'];
-  const custom=document.querySelector('#inc-custom-text')?.value||'';
-  const reason=sel.value==='3'?custom:reasons[+sel.value];
-  const t=DELEGATED_TASKS.find(x=>x.id===id);
-  if(t){t.incompReason=reason;if(window.fbSaveDelegatedTask)window.fbSaveDelegatedTask(t);}
-  showToast('📝 Reason recorded','info');
+  const reasonLabels=['Didn\'t get time – will do tomorrow','No response from other end – will follow up tomorrow','Delegated to someone – awaiting their response','Others'];
+  const idx=+sel.value;
+  const customText=idx===3?(document.getElementById('inc-custom-text')?.value||'').trim():'';
+  if(idx===3&&!customText){showToast('Please describe the reason','error');return;}
+  const reason=reasonLabels[idx];
+  taskReasons[taskKey]={reason, customText, taskText: taskText||taskKey};
+  saveTaskReasons();
+  // Also update delegated task record if it's a delegated task
+  if(taskKey.startsWith('del-')){
+    const id=taskKey.slice(4);
+    const t=DELEGATED_TASKS.find(x=>x.id===id);
+    if(t){t.incompReason=reason+(customText?' – '+customText:'');if(window.fbSaveDelegatedTask)window.fbSaveDelegatedTask(t);}
+  }
+  showToast('📝 Reason recorded – will appear in EOD','info');
   closeModal();
+  showPage('tasks');
 }
 
 // ======================== TASKS PAGE ========================
@@ -1336,40 +1361,83 @@ function pageTasks(){
   const sop=SOPs[CU]||[];
   const myDelegated=DELEGATED_TASKS.filter(t=>t.to===CU&&!t.done);
   const prioL={high:u.hinglish?'🔴 Zaroor':'🔴 High',med:u.hinglish?'🟡 Karna Hai':'🟡 Medium',low:u.hinglish?'🟢 Baad Mein':'🟢 Low'};
+  const today=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+  // Count done/incomplete for EOD preview bar
+  const doneCount=sop.filter((_,i)=>taskChecked[i]).length;
+  const incCount=sop.length-doneCount;
+  const hasReasons=Object.keys(taskReasons).length>0;
+
   return `
   ${myDelegated.length?`<div class="card" style="border-color:var(--orange);margin-bottom:16px">
     <div class="card-title">📌 ${u.hinglish?'Owner Ke Tasks':'Tasks from Owner (Prayas)'}</div>
     <ul class="task-list">
-    ${myDelegated.map(t=>`<li class="task-item">
-      <div class="task-check" onclick="markDelegatedDone('${t.id}')"></div>
-      <div class="task-body">
+    ${myDelegated.map(t=>{
+      const tk='del-'+t.id;
+      const r=taskReasons[tk];
+      return `<li class="task-item" style="${r?'opacity:0.7':''}">
+      <div class="task-check${t.done?' done':''}" onclick="markDelegatedDone('${t.id}')"></div>
+      <div class="task-body" style="width:100%">
         <div class="task-title">${t.task}</div>
-        <div class="task-meta"><span class="tag tag-${t.priority==='high'?'red':'orange'}">${t.priority.toUpperCase()}</span> · ${t.date}
-          <button class="btn-secondary btn-xs" style="margin-left:8px" onclick="eodIncompleteReason('${t.id}')">Cannot Complete</button>
-        </div>
-      </div></li>`).join('')}
+        <div class="task-meta"><span class="tag tag-${t.priority==='high'?'red':'orange'}">${t.priority.toUpperCase()}</span> · ${t.date}</div>
+        ${r?`<div style="margin-top:6px;padding:6px 10px;background:var(--red)11;border-left:3px solid var(--red);border-radius:0 6px 6px 0;font-size:11px">
+          <span style="color:var(--red);font-weight:700">❌ Cannot Complete:</span>
+          <span style="color:var(--text2);margin-left:4px">${escHtml(r.reason)}${r.customText?' — '+escHtml(r.customText):''}</span>
+          <button onclick="clearTaskReason('${tk}')" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:10px;margin-left:6px">✕ clear</button>
+        </div>`:''}
+        ${!r?`<div class="btn-row" style="margin-top:6px;gap:6px">
+          <button class="btn-secondary btn-xs" style="color:var(--red);border-color:var(--red)44" onclick="eodIncompleteReason('${tk}','${t.task.replace(/'/g,"\\'")}')">❌ Cannot Complete</button>
+        </div>`:''}
+      </div></li>`;
+    }).join('')}
     </ul></div>`:''}
   <div class="card">
-    <div class="card-title">${u.hinglish?'Aaj Ka SOP Checklist':'Daily SOP Checklist'} – ${new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div class="card-title" style="margin:0">${u.hinglish?'Aaj Ka SOP Checklist':'Daily SOP Checklist'} – ${today}</div>
+      <div style="font-size:12px;color:var(--text2)">${doneCount}/${sop.length} done</div>
+    </div>
     <ul class="task-list">
-    ${sop.map((t,i)=>`<li class="task-item">
-      <div class="task-check${taskChecked[i]?' done':''}" onclick="toggleTask(${i})"></div>
-      <div class="task-body">
-        <div class="task-title${taskChecked[i]?' done':''}">${t.text}</div>
-        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+    ${sop.map((t,i)=>{
+      const tk='sop-'+i;
+      const r=taskReasons[tk];
+      const checked=taskChecked[i];
+      return `<li class="task-item" style="${checked?'opacity:0.7':''}${r&&!checked?'background:var(--red)08;':''}">
+      <div class="task-check${checked?' done':''}" onclick="toggleTask(${i})" title="${checked?'Mark incomplete':'Mark done'}"></div>
+      <div class="task-body" style="width:100%">
+        <div class="task-title${checked?' done':''}">${t.text}</div>
+        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center">
           ${t.priority==='high'?'<span class="tag tag-red" style="font-size:10px">HIGH</span>':t.priority==='med'?'<span class="tag tag-orange" style="font-size:10px">MED</span>':'<span class="tag" style="font-size:10px;background:var(--navy3)">LOW</span>'}
           ${t.code?`<span class="tag tag-blue" style="font-size:10px">${t.code}</span>`:''}
+          ${checked?`<span style="font-size:10px;color:var(--green);font-weight:700">✅ Done</span>`:''}
         </div>
-        <div class="task-meta">
-          <span class="task-priority p-${t.priority}">${prioL[t.priority]}</span>
-          ${!taskChecked[i]?`<button class="btn-secondary btn-xs" style="margin-left:8px" onclick="eodIncompleteReason('sop-${i}')">Cannot Complete</button>`:''}
-        </div>
-      </div></li>`).join('')}
+        ${r&&!checked?`<div style="margin-top:6px;padding:6px 10px;background:var(--red)11;border-left:3px solid var(--red);border-radius:0 6px 6px 0;font-size:11px">
+          <span style="color:var(--red);font-weight:700">❌ Cannot Complete:</span>
+          <span style="color:var(--text2);margin-left:4px">${escHtml(r.reason)}${r.customText?' — '+escHtml(r.customText):''}</span>
+          <button onclick="clearTaskReason('${tk}')" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:10px;margin-left:6px">✕ clear</button>
+        </div>`:''}
+        ${!checked&&!r?`<div class="btn-row" style="margin-top:6px;gap:6px">
+          <button class="btn-secondary btn-xs" style="color:var(--red);border-color:var(--red)44" onclick="eodIncompleteReason('${tk}','${t.text.replace(/'/g,"\\'")}')">❌ Cannot Complete</button>
+        </div>`:''}
+      </div></li>`;
+    }).join('')}
     </ul>
-    <div class="btn-row">
+    <div class="btn-row" style="margin-top:12px">
       <button class="btn-primary" onclick="markAllDone()">✓ ${u.hinglish?'Sab Done Karo':'Mark All Done'}</button>
-      <button class="btn-secondary" onclick="showPage('eod')">${u.hinglish?'EOD Bhejo':'Submit EOD →'}</button>
     </div>
+  </div>
+  ${/* EOD Preview Card — always visible at bottom of tasks */''}
+  <div class="card" style="border:2px solid var(--blue)44;background:var(--blue)08">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div style="font-weight:700;font-size:14px">📤 End of Day Report</div>
+      <span style="font-size:12px;color:var(--text2)">${doneCount} done · ${Object.values(taskReasons).length} flagged incomplete</span>
+    </div>
+    ${doneCount>0||Object.values(taskReasons).length>0?`
+    <div style="background:var(--bg2);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px">
+      ${doneCount>0?`<div style="margin-bottom:6px;color:var(--green);font-weight:600">✅ Completed (${doneCount})</div>
+      ${sop.filter((_,i)=>taskChecked[i]).map(t=>`<div style="padding:2px 0;color:var(--text)">• ${escHtml(t.text)}</div>`).join('')}`:''}
+      ${Object.values(taskReasons).length>0?`<div style="margin-top:8px;margin-bottom:6px;color:var(--red);font-weight:600">❌ Not Completed (${Object.values(taskReasons).length})</div>
+      ${Object.entries(taskReasons).map(([k,r])=>`<div style="padding:2px 0;color:var(--text2)">• ${escHtml(r.taskText||k)} — <em>${escHtml(r.reason)}${r.customText?' ('+escHtml(r.customText)+')':''}</em></div>`).join('')}`:''}
+    </div>`:'<div style="color:var(--text2);font-size:12px;margin-bottom:12px">Start ticking tasks above and they\'ll appear here automatically in your EOD.</div>'}
+    <button class="btn-primary" style="width:100%;padding:12px" onclick="showPage('eod')">📤 ${u.hinglish?'EOD Submit Karo':'Prepare & Submit EOD Report →'}</button>
   </div>
   <div class="card">
     <div class="card-title">${u.hinglish?'Naya Kaam Add Karo':'Add Ad-hoc Task'}</div>
@@ -1398,6 +1466,11 @@ function pageTasks(){
       </div>
     </div>
   </div>`;
+}
+function clearTaskReason(tk){
+  delete taskReasons[tk];
+  saveTaskReasons();
+  showPage('tasks');
 }
 function toggleTask(i){
   taskChecked[i]=!taskChecked[i];
@@ -1463,16 +1536,33 @@ function deleteCustomCode(i){
 function pageEOD(){
   const u=USERS[CU];const hin=u.hinglish;
   const sop=SOPs[CU]||[];
-  const incomplete=sop.filter((_,i)=>!taskChecked[i]);
+  const myDelegated=DELEGATED_TASKS.filter(t=>t.to===CU&&!t.done);
+  // Build task summary from taskChecked and taskReasons
+  const completedTasks=[];
+  sop.forEach((t,i)=>{if(taskChecked[i])completedTasks.push({text:t.text,source:'sop'});});
+  myDelegated.forEach(t=>{if(t.done)completedTasks.push({text:t.task,source:'delegated'});});
+  const incompleteTasks=[];
+  Object.entries(taskReasons).forEach(([k,r])=>{incompleteTasks.push({key:k,text:r.taskText||k,reason:r.reason,customText:r.customText||''});});
+  // Pre-populate textarea values
+  const preSummary=completedTasks.length?completedTasks.map(t=>'• '+t.text).join('\n'):'';
+  const preIssues=incompleteTasks.length?incompleteTasks.map(t=>'• '+t.text+' → '+t.reason+(t.customText?' ('+t.customText+')':'')).join('\n'):'';
+  const hasTaskData=completedTasks.length>0||incompleteTasks.length>0;
+  // Find incomplete SOP tasks that have no reason recorded yet
+  const sopIncomplete=sop.filter((_,i)=>!taskChecked[i]&&!taskReasons['sop-'+i]);
   return `
   <div class="card eod-form">
     <div class="card-title">${hin?'Aaj Ka EOD Update':'End of Day Report'}</div>
+    ${hasTaskData?`<div class="info-box" style="margin-bottom:12px">
+      <div style="font-weight:700;margin-bottom:8px">📋 Today's Task Summary (auto-filled from your task list)</div>
+      ${completedTasks.length?`<div style="margin-bottom:6px"><span style="color:var(--green);font-weight:600">✅ Completed (${completedTasks.length})</span><div style="margin-top:4px;font-size:12px;line-height:1.6">${completedTasks.map(t=>`• ${escHtml(t.text)}`).join('<br>')}</div></div>`:''}
+      ${incompleteTasks.length?`<div><span style="color:var(--red);font-weight:600">❌ Not Completed (${incompleteTasks.length})</span><div style="margin-top:4px;font-size:12px;line-height:1.6">${incompleteTasks.map(t=>`• ${escHtml(t.text)} <em style="color:var(--text2)">→ ${escHtml(t.reason)}${t.customText?' ('+escHtml(t.customText)+')':''}</em>`).join('<br>')}</div></div>`:''}
+    </div>`:''}
     <div class="row2">
-      <div class="form-row"><label>${hin?'Tarikh':'Date'}</label><input type="date" value="${new Date().toISOString().split('T')[0]}" /></div>
+      <div class="form-row"><label>${hin?'Tarikh':'Date'}</label><input type="date" value="${new Date().toISOString().split('T')[0]}" id="eod-date"/></div>
       <div class="form-row"><label>Site / Department</label>
         <select id="eod-site">
           <optgroup label="🏗️ Project Sites">
-            ${SITES.map(s=>`<option value="${s.code}">${s.code} – ${s.name}</option>`).join('')}
+            ${(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code} – ${s.name}</option>`).join('')}
           </optgroup>
           <optgroup label="🏢 Departments / Functions">
             <option value="sales">Sales</option>
@@ -1487,24 +1577,20 @@ function pageEOD(){
       </div>
     </div>
     <div class="form-row"><label>${hin?'Aaj Kya Kiya (Progress)':'Work Done Today'}</label>
-      <textarea rows="4" placeholder="${hin?'Aaj ke kaam ka description...':'Describe today\'s progress...'}" id="eod-summary"></textarea></div>
+      <textarea rows="5" placeholder="${hin?'Aaj ke kaam ka description...':'Describe today\'s progress...'}" id="eod-summary">${escHtml(preSummary)}</textarea>
+      ${preSummary?`<div style="font-size:11px;color:var(--text2);margin-top:4px">✏️ Pre-filled from your completed tasks. Edit freely to add more details.</div>`:''}
+    </div>
     <div class="form-row"><label>${hin?'Koi Problem / Issue':'Issues / Blockers'}</label>
-      <textarea rows="3" placeholder="${hin?'Koi dikkat...':'Any issues, delays...'}" id="eod-issues"></textarea></div>
+      <textarea rows="3" placeholder="${hin?'Koi dikkat...':'Any issues, delays...'}" id="eod-issues">${escHtml(preIssues)}</textarea>
+      ${preIssues?`<div style="font-size:11px;color:var(--text2);margin-top:4px">✏️ Pre-filled from tasks marked "Cannot Complete". Edit freely.</div>`:''}
+    </div>
     <div class="form-row"><label>${hin?'Kal Ka Plan':'Tomorrow\'s Plan'}</label>
       <textarea rows="3" placeholder="${hin?'Kal kya karoge...':'Tomorrow\'s plan...'}" id="eod-tomorrow"></textarea></div>
     <div class="form-row"><label>${hin?'Owner Ko Kuch Batana Hai?':'Escalation for Owner/Manager'}</label>
       <textarea rows="2" placeholder="${hin?'Important message...':'Important escalation...'}" id="eod-owner"></textarea></div>
-    ${incomplete.length?`<div class="warn-box">
-      ⚠️ <strong>${incomplete.length} SOP task${incomplete.length>1?'s':''} incomplete</strong> – you must give a reason for each:
-      ${incomplete.map((t,i)=>{return`<div style="margin-top:8px;padding:8px;background:rgba(0,0,0,.2);border-radius:6px">
-        <div style="font-size:12px;font-weight:600;margin-bottom:6px">${incomplete[i]?.text||'Task'}</div>
-        <select style="width:100%;padding:8px;background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px" id="inc-${i}">
-          <option value="a">Didn't get time – will do tomorrow</option>
-          <option value="b">No response from other end – will follow up tomorrow</option>
-          <option value="c">Delegated to someone – awaiting response</option>
-          <option value="d">Others (see note below)</option>
-        </select></div>`;}).join('')}
-    </div>`:'<div class="info-box">✅ All SOP tasks completed today – great work!</div>'}
+    ${sopIncomplete.length?`<div class="warn-box">
+      ⚠️ <strong>${sopIncomplete.length} SOP task${sopIncomplete.length>1?'s':''} still need a reason</strong> – tick them done or mark "Cannot Complete" in <button onclick="showPage('tasks')" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:13px;padding:0;text-decoration:underline">My Tasks</button> first.
+    </div>`:(incompleteTasks.length===0&&sop.length>0)?'<div class="info-box">✅ All SOP tasks completed today – great work!</div>':''}
     <div class="form-row"><label>${hin?'Photos / Files':'Upload Photos / Files'}</label>
       <div class="upload-zone" onclick="document.getElementById('eod-file').click()">
         <div class="upload-icon">📸</div>
@@ -1535,8 +1621,18 @@ async function submitEOD(){
   const mood=document.querySelector('input[name="eod-mood"]:checked')?.value||'';
   const escalation=document.getElementById('eod-owner')?.value||'';
   const site=document.getElementById('eod-site')?.value||'';
+  const date=document.getElementById('eod-date')?.value||new Date().toISOString().split('T')[0];
   if(!summary){showToast('⚠️ Please fill today\'s work summary','info');return;}
-  const data={summary,tomorrow,issues,mood,escalation,site};
+  // Build task summary for the report
+  const sop=SOPs[CU]||[];
+  const myDelegated=DELEGATED_TASKS.filter(t=>t.to===CU&&!t.done);
+  const completedList=[];
+  sop.forEach((t,i)=>{if(taskChecked[i])completedList.push({text:t.text,source:'sop'});});
+  myDelegated.forEach(t=>{if(t.done)completedList.push({text:t.task,source:'delegated'});});
+  const incompleteList=[];
+  Object.entries(taskReasons).forEach(([k,r])=>{incompleteList.push({key:k,text:r.taskText||k,reason:r.reason,customText:r.customText||''});});
+  const taskSummary={completed:completedList,incomplete:incompleteList};
+  const data={summary,tomorrow,issues,mood,escalation,site,date,taskSummary};
   showToast('⏳ Submitting EOD...','info');
   if(window.fbSaveEOD){
     const ok=await window.fbSaveEOD(data);
