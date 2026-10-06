@@ -2755,7 +2755,615 @@ function pageAIFeedback(){
     </div>
   </div>`;
 }
+// ═══════════════════════════════════════════════════════
+// PROJECT TIMELINE MODULE — Firebase-backed
+// Collections: project_timelines/{siteCode} → {tasks:[...]}
+// Each task: {id, title, desc, startDate, durationDays, totalQty, unit, subtasks:[...], dailyLogs:[{date,qty,note}]}
+// Each subtask: same shape as task but no further subtasks
+// ═══════════════════════════════════════════════════════
+window.PT_DATA={};  // {siteCode: {tasks:[...]}}
+window.PT_SITE='';  // currently selected site
+
+window.fbLoadTimeline=async function(siteCode){
+  try{
+    const doc=await db.collection('project_timelines').doc(siteCode).get();
+    if(doc.exists)return doc.data();
+    return null;
+  }catch(e){console.error('Timeline load failed',e);return null;}
+};
+window.fbSaveTimeline=async function(siteCode,data){
+  try{
+    await db.collection('project_timelines').doc(siteCode).set({
+      ...data,
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy:window.CU||'unknown'
+    });
+    return true;
+  }catch(e){console.error('Timeline save failed',e);return false;}
+};
+
+function ptGetSiteData(code){
+  return window.PT_DATA[code]||{tasks:[]};
+}
+function ptSave(code){
+  const data=window.PT_DATA[code]||{tasks:[]};
+  try{localStorage.setItem('1wc_pt_'+code,JSON.stringify(data));}catch(e){}
+  if(window.fbSaveTimeline)window.fbSaveTimeline(code,data);
+}
+function ptLoad(code){
+  try{const s=localStorage.getItem('1wc_pt_'+code);if(s)window.PT_DATA[code]=JSON.parse(s);}catch(e){}
+  // async cloud refresh
+  if(window.fbLoadTimeline){
+    window.fbLoadTimeline(code).then(d=>{
+      if(d&&d.tasks){window.PT_DATA[code]=d;ptRender();}
+    });
+  }
+}
+function ptUid(){return 'pt_'+Date.now()+'_'+Math.random().toString(36).substr(2,6);}
+
+function ptGetTask(siteCode,taskId){
+  const tasks=(window.PT_DATA[siteCode]||{tasks:[]}).tasks;
+  return tasks.find(t=>t.id===taskId);
+}
+function ptGetSubtask(siteCode,taskId,subId){
+  const task=ptGetTask(siteCode,taskId);
+  return task?(task.subtasks||[]).find(s=>s.id===subId):null;
+}
+function ptCalcHealth(item){
+  // item = task or subtask, has totalQty, dailyLogs, startDate, durationDays
+  const done=ptDoneQty(item);
+  const total=parseFloat(item.totalQty)||0;
+  if(total===0) return {pct:0,status:'pending',color:'var(--text2)'};
+  const pct=Math.min(100,Math.round((done/total)*100));
+  const today=new Date();
+  const start=item.startDate?new Date(item.startDate):null;
+  const dur=parseInt(item.durationDays)||0;
+  const expectedEnd=start&&dur?new Date(start.getTime()+dur*86400000):null;
+  let status='on-track', color='var(--green)';
+  if(pct>=100){status='done';color='var(--green)';}
+  else if(expectedEnd&&today>expectedEnd){status='delayed';color='var(--red)';}
+  else if(pct>0){status='ongoing';color='var(--blue)';}
+  else{status='not-started';color='var(--text2)';}
+  return{pct,status,color,done,total,expectedEnd};
+}
+function ptDoneQty(item){
+  return((item.dailyLogs||[]).reduce((s,l)=>s+(parseFloat(l.qty)||0),0));
+}
+function ptActualEnd(item){
+  const h=ptCalcHealth(item);
+  if(h.pct>=100){
+    const logs=item.dailyLogs||[];
+    if(logs.length){
+      const sorted=[...logs].sort((a,b)=>b.date.localeCompare(a.date));
+      return sorted[0].date;
+    }
+  }
+  return null;
+}
+function ptOverallSiteHealth(siteCode){
+  const tasks=(window.PT_DATA[siteCode]||{tasks:[]}).tasks;
+  if(!tasks.length)return{pct:0,status:'No tasks',color:'var(--text2)'};
+  let totalPct=0, hasDelayed=false, allDone=true;
+  tasks.forEach(t=>{
+    const items=t.subtasks&&t.subtasks.length?t.subtasks:[t];
+    items.forEach(item=>{
+      const h=ptCalcHealth(item);
+      totalPct+=h.pct;
+      if(h.status==='delayed')hasDelayed=true;
+      if(h.status!=='done')allDone=false;
+    });
+  });
+  const itemCount=tasks.reduce((s,t)=>s+((t.subtasks&&t.subtasks.length)?t.subtasks.length:1),0);
+  const avg=itemCount?Math.round(totalPct/itemCount):0;
+  if(allDone)return{pct:100,status:'Completed ✅',color:'var(--green)'};
+  if(hasDelayed)return{pct:avg,status:'Delayed ⚠️',color:'var(--red)'};
+  if(avg>0)return{pct:avg,status:'On Track 🔵',color:'var(--blue)'};
+  return{pct:0,status:'Not Started',color:'var(--text2)'};
+}
+
 function pageExecution(){
+  const sites=window.SITES||[];
+  const activeSites=sites.filter(s=>s.status==='active');
+  window.PT_SITE=window.PT_SITE||( activeSites[0]?activeSites[0].code:'' );
+  if(window.PT_SITE) ptLoad(window.PT_SITE);
+
+  c.innerHTML=`
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div class="page-title" style="margin:0">📅 Project Timeline</div>
+    <div class="btn-row" style="margin:0">
+      <button class="btn-primary btn-sm" onclick="ptOpenAddTask()">+ Add Task</button>
+      <button class="btn-secondary btn-sm" onclick="ptExportExcel()">📥 Excel</button>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <select id="pt-site-sel" onchange="ptSiteChanged()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-weight:700;font-size:13px">
+        ${activeSites.map(s=>`<option value="${s.code}" ${s.code===window.PT_SITE?'selected':''}>${s.name}</option>`).join('')||'<option value="">No active sites</option>'}
+      </select>
+      <div id="pt-site-health-badge"></div>
+      <div id="pt-cloud-status" style="font-size:11px;color:var(--text2)"></div>
+    </div>
+  </div>
+  <div id="pt-main"></div>`;
+
+  ptRender();
+}
+function ptSiteChanged(){
+  const sel=document.getElementById('pt-site-sel');
+  if(!sel)return;
+  window.PT_SITE=sel.value;
+  ptLoad(window.PT_SITE);
+  ptRender();
+}
+function ptRender(){
+  const wrap=document.getElementById('pt-main');
+  const badge=document.getElementById('pt-site-health-badge');
+  if(!wrap)return;
+  const siteCode=window.PT_SITE;
+  const data=ptGetSiteData(siteCode);
+  const tasks=data.tasks||[];
+  // Update health badge
+  if(badge){
+    const h=ptOverallSiteHealth(siteCode);
+    badge.innerHTML=`<div style="display:flex;align-items:center;gap:8px;background:${h.color}22;padding:6px 14px;border-radius:20px;border:1px solid ${h.color}44">
+      <div style="width:80px;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+        <div style="width:${h.pct}%;height:8px;background:${h.color};border-radius:4px;transition:width 0.3s"></div>
+      </div>
+      <span style="font-weight:700;font-size:13px;color:${h.color}">${h.pct}%</span>
+      <span style="font-size:12px;color:${h.color}">${h.status}</span>
+    </div>`;
+  }
+  if(!tasks.length){
+    wrap.innerHTML=`<div class="card" style="text-align:center;padding:40px 20px;color:var(--text2)">
+      <div style="font-size:36px;margin-bottom:12px">📋</div>
+      <div style="font-size:16px;font-weight:700;margin-bottom:8px">No tasks yet for this site</div>
+      <div style="font-size:13px;margin-bottom:16px">Add tasks to track project execution, milestones, and daily progress</div>
+      <button class="btn-primary" onclick="ptOpenAddTask()">+ Add First Task</button>
+    </div>`;
+    return;
+  }
+  wrap.innerHTML=tasks.map(task=>ptRenderTaskCard(siteCode,task)).join('');
+}
+function ptRenderTaskCard(siteCode,task){
+  const hasSubs=task.subtasks&&task.subtasks.length>0;
+  const items=hasSubs?task.subtasks:[task];
+  // Task-level health = average of subtasks (or self)
+  let taskPct=0;
+  items.forEach(item=>{const h=ptCalcHealth(item);taskPct+=h.pct;});
+  taskPct=Math.round(taskPct/items.length);
+  const taskH=ptOverallSubHealth(items);
+
+  return `<div class="card" style="margin-bottom:14px;border-left:4px solid ${taskH.color}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      <div style="flex:1;min-width:200px">
+        <div style="font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px">
+          ${escHtml(task.title)}
+          <span style="font-size:11px;background:${taskH.color}22;color:${taskH.color};border-radius:8px;padding:2px 8px">${taskH.status}</span>
+        </div>
+        ${task.desc?`<div style="font-size:12px;color:var(--text2);margin-top:3px">${escHtml(task.desc)}</div>`:''}
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;font-size:11px;color:var(--text2)">
+          ${task.startDate?`<span>📅 Start: <b>${task.startDate}</b></span>`:''}
+          ${task.durationDays?`<span>⏳ Duration: <b>${task.durationDays} days</b></span>`:''}
+          ${task.startDate&&task.durationDays?`<span>📌 Expected End: <b>${ptExpectedEnd(task.startDate,task.durationDays)}</b></span>`:''}
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn-secondary btn-xs" onclick="ptOpenAddSubtask('${task.id}')">+ Subtask</button>
+        <button class="btn-secondary btn-xs" onclick="ptOpenEditTask('${task.id}')">✏️ Edit</button>
+        <button class="btn-secondary btn-xs" style="color:var(--red)" onclick="ptDeleteTask('${task.id}')">🗑️</button>
+      </div>
+    </div>
+    <div style="background:var(--border);border-radius:4px;height:8px;margin-bottom:12px;overflow:hidden">
+      <div style="width:${taskPct}%;height:8px;background:${taskH.color};border-radius:4px;transition:width 0.5s"></div>
+    </div>
+    ${hasSubs?ptRenderSubtasks(siteCode,task):ptRenderItemBody(siteCode,task,task.id,null)}
+  </div>`;
+}
+function ptOverallSubHealth(items){
+  let hasDelayed=false,allDone=true;
+  items.forEach(i=>{
+    const h=ptCalcHealth(i);
+    if(h.status==='delayed')hasDelayed=true;
+    if(h.status!=='done')allDone=false;
+  });
+  if(allDone)return{status:'Done ✅',color:'var(--green)'};
+  if(hasDelayed)return{status:'Delayed ⚠️',color:'var(--red)'};
+  const anyOngoing=items.some(i=>ptCalcHealth(i).status==='ongoing');
+  if(anyOngoing)return{status:'Ongoing 🔵',color:'var(--blue)'};
+  const anyNotStarted=items.some(i=>ptCalcHealth(i).status==='not-started'||ptCalcHealth(i).pct>0);
+  if(anyNotStarted)return{status:'In Progress',color:'var(--orange)'};
+  return{status:'Not Started',color:'var(--text2)'};
+}
+function ptExpectedEnd(startDate,durationDays){
+  if(!startDate||!durationDays)return '-';
+  const d=new Date(startDate);
+  d.setDate(d.getDate()+parseInt(durationDays));
+  return d.toISOString().split('T')[0];
+}
+function ptRenderSubtasks(siteCode,task){
+  return `<div style="display:grid;gap:8px">
+    ${task.subtasks.map(sub=>ptRenderSubtaskRow(siteCode,task.id,sub)).join('')}
+  </div>`;
+}
+function ptRenderSubtaskRow(siteCode,taskId,sub){
+  const h=ptCalcHealth(sub);
+  const done=h.done;const total=h.total;
+  const actualEnd=ptActualEnd(sub);
+  const expEnd=ptExpectedEnd(sub.startDate,sub.durationDays);
+  return `<div style="background:var(--bg2);border-radius:8px;padding:10px 12px;border-left:3px solid ${h.color}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">
+      <div style="flex:1;min-width:160px">
+        <div style="font-weight:600;font-size:13px">${escHtml(sub.title)}</div>
+        ${sub.desc?`<div style="font-size:11px;color:var(--text2);margin-top:2px">${escHtml(sub.desc)}</div>`:''}
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;font-size:11px;color:var(--text2)">
+          ${sub.startDate?`<span>📅 ${sub.startDate}</span>`:''}
+          ${sub.durationDays?`<span>⏳ ${sub.durationDays}d</span>`:''}
+          ${sub.startDate&&sub.durationDays?`<span>📌 Exp: ${expEnd}</span>`:''}
+          ${actualEnd?`<span style="color:var(--green)">✅ Done: ${actualEnd}</span>`:''}
+          <span style="color:${h.color};font-weight:700">${h.pct}%</span>
+        </div>
+      </div>
+      <div style="text-align:right;min-width:100px">
+        <div style="font-size:12px;color:var(--gold);font-weight:700">${done} / ${total} ${escHtml(sub.unit||'')}</div>
+        <div style="background:var(--border);border-radius:3px;height:5px;margin-top:4px;overflow:hidden">
+          <div style="width:${h.pct}%;height:5px;background:${h.color};border-radius:3px"></div>
+        </div>
+        <div style="display:flex;gap:4px;margin-top:6px;justify-content:flex-end">
+          <button class="btn-primary btn-xs" onclick="ptOpenDailyLog('${taskId}','${sub.id}')">📝 Log Today</button>
+          <button class="btn-secondary btn-xs" onclick="ptViewLogs('${taskId}','${sub.id}')">📋 Logs</button>
+          <button class="btn-secondary btn-xs" onclick="ptOpenEditSubtask('${taskId}','${sub.id}')">✏️</button>
+          <button class="btn-secondary btn-xs" style="color:var(--red)" onclick="ptDeleteSubtask('${taskId}','${sub.id}')">🗑️</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+function ptRenderItemBody(siteCode,item,taskId,subId){
+  // For a standalone task (no subtasks)
+  const h=ptCalcHealth(item);
+  const done=h.done;const total=h.total;
+  const actualEnd=ptActualEnd(item);
+  const expEnd=ptExpectedEnd(item.startDate,item.durationDays);
+  return `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+    <div>
+      <div style="font-size:13px;color:var(--gold);font-weight:700">Progress: ${done} / ${total} ${escHtml(item.unit||'units')}</div>
+      ${actualEnd?`<div style="font-size:11px;color:var(--green);margin-top:2px">✅ Completed: ${actualEnd}</div>`:''}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn-primary btn-sm" onclick="ptOpenDailyLog('${taskId}',null)">📝 Log Today's Progress</button>
+      <button class="btn-secondary btn-sm" onclick="ptViewLogs('${taskId}',null)">📋 View All Logs</button>
+    </div>
+  </div>`;
+}
+
+// ── ADD TASK ──────────────────────────────────────────────
+function ptOpenAddTask(){
+  if(!window.PT_SITE){showToast('Select a site first','info');return;}
+  openModal('📋 Add New Task',`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Task Title *</label><input id="pt-t-title" placeholder="e.g. Ducting Installation"/></div>
+      <div class="form-row"><label>Unit of Measurement</label><input id="pt-t-unit" placeholder="e.g. RFT, Sqft, Points, Nos"/></div>
+    </div>
+    <div class="form-row"><label>Description (optional)</label><textarea id="pt-t-desc" rows="2" placeholder="Brief scope or notes..."></textarea></div>
+    <div class="row2">
+      <div class="form-row"><label>Total Quantity / Goal *</label><input id="pt-t-qty" type="number" placeholder="e.g. 1200" min="0"/></div>
+      <div class="form-row"><label>Start Date</label><input id="pt-t-start" type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Duration (days)</label><input id="pt-t-dur" type="number" placeholder="e.g. 30" min="1"/></div>
+      <div class="form-row"><label id="pt-t-exp-lbl" style="color:var(--text2)">Expected End: —</label></div>
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="ptSaveNewTask()">✅ Add Task</button><button class="btn-secondary" onclick="closeModal()">Cancel</button></div>
+  </div>`);
+  // Live expected end calc
+  ['pt-t-start','pt-t-dur'].forEach(id=>{
+    document.getElementById(id)?.addEventListener('input',()=>{
+      const s=document.getElementById('pt-t-start')?.value;
+      const d=document.getElementById('pt-t-dur')?.value;
+      const lbl=document.getElementById('pt-t-exp-lbl');
+      if(lbl)lbl.textContent='Expected End: '+(s&&d?ptExpectedEnd(s,d):'—');
+    });
+  });
+}
+function ptSaveNewTask(){
+  const title=document.getElementById('pt-t-title')?.value.trim();
+  const desc=document.getElementById('pt-t-desc')?.value.trim()||'';
+  const unit=document.getElementById('pt-t-unit')?.value.trim()||'units';
+  const qty=parseFloat(document.getElementById('pt-t-qty')?.value)||0;
+  const startDate=document.getElementById('pt-t-start')?.value||'';
+  const durationDays=parseInt(document.getElementById('pt-t-dur')?.value)||0;
+  if(!title){showToast('Task title required','error');return;}
+  if(!window.PT_DATA[window.PT_SITE])window.PT_DATA[window.PT_SITE]={tasks:[]};
+  window.PT_DATA[window.PT_SITE].tasks.push({
+    id:ptUid(),title,desc,unit,totalQty:qty,startDate,durationDays,subtasks:[],dailyLogs:[]
+  });
+  ptSave(window.PT_SITE);
+  closeModal();
+  ptRender();
+  showToast('✅ Task added','success');
+}
+
+// ── EDIT TASK ─────────────────────────────────────────────
+function ptOpenEditTask(taskId){
+  const task=ptGetTask(window.PT_SITE,taskId);
+  if(!task)return;
+  openModal('✏️ Edit Task',`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Task Title *</label><input id="pt-et-title" value="${escHtml(task.title)}"/></div>
+      <div class="form-row"><label>Unit</label><input id="pt-et-unit" value="${escHtml(task.unit||'units')}"/></div>
+    </div>
+    <div class="form-row"><label>Description</label><textarea id="pt-et-desc" rows="2">${escHtml(task.desc||'')}</textarea></div>
+    <div class="row2">
+      <div class="form-row"><label>Total Quantity</label><input id="pt-et-qty" type="number" value="${task.totalQty||0}" min="0"/></div>
+      <div class="form-row"><label>Start Date</label><input id="pt-et-start" type="date" value="${task.startDate||''}"/></div>
+    </div>
+    <div class="form-row"><label>Duration (days)</label><input id="pt-et-dur" type="number" value="${task.durationDays||0}" min="1"/></div>
+    <div class="btn-row"><button class="btn-primary" onclick="ptSaveEditTask('${taskId}')">💾 Save</button><button class="btn-secondary" onclick="closeModal()">Cancel</button></div>
+  </div>`);
+}
+function ptSaveEditTask(taskId){
+  const task=ptGetTask(window.PT_SITE,taskId);
+  if(!task)return;
+  task.title=document.getElementById('pt-et-title')?.value.trim()||task.title;
+  task.desc=document.getElementById('pt-et-desc')?.value.trim()||'';
+  task.unit=document.getElementById('pt-et-unit')?.value.trim()||'units';
+  task.totalQty=parseFloat(document.getElementById('pt-et-qty')?.value)||0;
+  task.startDate=document.getElementById('pt-et-start')?.value||'';
+  task.durationDays=parseInt(document.getElementById('pt-et-dur')?.value)||0;
+  ptSave(window.PT_SITE);
+  closeModal();
+  ptRender();
+  showToast('✅ Task updated','success');
+}
+function ptDeleteTask(taskId){
+  if(!confirm('Delete this task and all its subtasks?'))return;
+  const data=window.PT_DATA[window.PT_SITE];
+  if(!data)return;
+  data.tasks=data.tasks.filter(t=>t.id!==taskId);
+  ptSave(window.PT_SITE);
+  ptRender();
+  showToast('Task deleted','info');
+}
+
+// ── ADD SUBTASK ───────────────────────────────────────────
+function ptOpenAddSubtask(taskId){
+  const task=ptGetTask(window.PT_SITE,taskId);
+  if(!task)return;
+  openModal('➕ Add Subtask to: '+escHtml(task.title),`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Subtask Title *</label><input id="pt-st-title" placeholder="e.g. 3rd Floor Ducting"/></div>
+      <div class="form-row"><label>Unit of Measurement</label><input id="pt-st-unit" placeholder="e.g. RFT, Nos" value="${escHtml(task.unit||'')}"/></div>
+    </div>
+    <div class="form-row"><label>Description (optional)</label><textarea id="pt-st-desc" rows="2" placeholder="Scope, notes..."></textarea></div>
+    <div class="row2">
+      <div class="form-row"><label>Total Quantity *</label><input id="pt-st-qty" type="number" placeholder="e.g. 400" min="0"/></div>
+      <div class="form-row"><label>Start Date</label><input id="pt-st-start" type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Duration (days)</label><input id="pt-st-dur" type="number" placeholder="e.g. 10" min="1"/></div>
+      <div class="form-row"><label id="pt-st-exp-lbl" style="color:var(--text2)">Expected End: —</label></div>
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="ptSaveNewSubtask('${taskId}')">✅ Add Subtask</button><button class="btn-secondary" onclick="closeModal()">Cancel</button></div>
+  </div>`);
+  ['pt-st-start','pt-st-dur'].forEach(id=>{
+    document.getElementById(id)?.addEventListener('input',()=>{
+      const s=document.getElementById('pt-st-start')?.value;
+      const d=document.getElementById('pt-st-dur')?.value;
+      const lbl=document.getElementById('pt-st-exp-lbl');
+      if(lbl)lbl.textContent='Expected End: '+(s&&d?ptExpectedEnd(s,d):'—');
+    });
+  });
+}
+function ptSaveNewSubtask(taskId){
+  const task=ptGetTask(window.PT_SITE,taskId);
+  if(!task)return;
+  const title=document.getElementById('pt-st-title')?.value.trim();
+  if(!title){showToast('Subtask title required','error');return;}
+  const sub={
+    id:ptUid(),
+    title,
+    desc:document.getElementById('pt-st-desc')?.value.trim()||'',
+    unit:document.getElementById('pt-st-unit')?.value.trim()||'units',
+    totalQty:parseFloat(document.getElementById('pt-st-qty')?.value)||0,
+    startDate:document.getElementById('pt-st-start')?.value||'',
+    durationDays:parseInt(document.getElementById('pt-st-dur')?.value)||0,
+    dailyLogs:[]
+  };
+  if(!task.subtasks)task.subtasks=[];
+  task.subtasks.push(sub);
+  ptSave(window.PT_SITE);
+  closeModal();
+  ptRender();
+  showToast('✅ Subtask added','success');
+}
+
+// ── EDIT SUBTASK ──────────────────────────────────────────
+function ptOpenEditSubtask(taskId,subId){
+  const sub=ptGetSubtask(window.PT_SITE,taskId,subId);
+  if(!sub)return;
+  openModal('✏️ Edit Subtask',`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Subtask Title *</label><input id="pt-est-title" value="${escHtml(sub.title)}"/></div>
+      <div class="form-row"><label>Unit</label><input id="pt-est-unit" value="${escHtml(sub.unit||'units')}"/></div>
+    </div>
+    <div class="form-row"><label>Description</label><textarea id="pt-est-desc" rows="2">${escHtml(sub.desc||'')}</textarea></div>
+    <div class="row2">
+      <div class="form-row"><label>Total Quantity</label><input id="pt-est-qty" type="number" value="${sub.totalQty||0}" min="0"/></div>
+      <div class="form-row"><label>Start Date</label><input id="pt-est-start" type="date" value="${sub.startDate||''}"/></div>
+    </div>
+    <div class="form-row"><label>Duration (days)</label><input id="pt-est-dur" type="number" value="${sub.durationDays||0}" min="1"/></div>
+    <div class="btn-row"><button class="btn-primary" onclick="ptSaveEditSubtask('${taskId}','${subId}')">💾 Save</button><button class="btn-secondary" onclick="closeModal()">Cancel</button></div>
+  </div>`);
+}
+function ptSaveEditSubtask(taskId,subId){
+  const sub=ptGetSubtask(window.PT_SITE,taskId,subId);
+  if(!sub)return;
+  sub.title=document.getElementById('pt-est-title')?.value.trim()||sub.title;
+  sub.desc=document.getElementById('pt-est-desc')?.value.trim()||'';
+  sub.unit=document.getElementById('pt-est-unit')?.value.trim()||'units';
+  sub.totalQty=parseFloat(document.getElementById('pt-est-qty')?.value)||0;
+  sub.startDate=document.getElementById('pt-est-start')?.value||'';
+  sub.durationDays=parseInt(document.getElementById('pt-est-dur')?.value)||0;
+  ptSave(window.PT_SITE);
+  closeModal();
+  ptRender();
+  showToast('✅ Subtask updated','success');
+}
+function ptDeleteSubtask(taskId,subId){
+  if(!confirm('Delete this subtask?'))return;
+  const task=ptGetTask(window.PT_SITE,taskId);
+  if(!task)return;
+  task.subtasks=(task.subtasks||[]).filter(s=>s.id!==subId);
+  ptSave(window.PT_SITE);
+  ptRender();
+  showToast('Subtask deleted','info');
+}
+
+// ── DAILY LOG ─────────────────────────────────────────────
+function ptOpenDailyLog(taskId,subId){
+  const item=subId?ptGetSubtask(window.PT_SITE,taskId,subId):ptGetTask(window.PT_SITE,taskId);
+  if(!item)return;
+  const h=ptCalcHealth(item);
+  const todayStr=new Date().toISOString().split('T')[0];
+  const todayLog=(item.dailyLogs||[]).find(l=>l.date===todayStr);
+  openModal(`📝 Log Progress — ${escHtml(item.title)}`,`<div class="eod-form">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;background:var(--bg2);padding:12px;border-radius:8px;margin-bottom:12px;text-align:center">
+      <div><div style="font-size:20px;font-weight:700;color:var(--gold)">${h.done}</div><div style="font-size:11px;color:var(--text2)">Done so far</div></div>
+      <div><div style="font-size:20px;font-weight:700;color:var(--text)">${h.total}</div><div style="font-size:11px;color:var(--text2)">Total Goal</div></div>
+      <div><div style="font-size:20px;font-weight:700;color:${h.color}">${h.pct}%</div><div style="font-size:11px;color:var(--text2)">Complete</div></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Date</label><input id="pt-log-date" type="date" value="${todayStr}"/></div>
+      <div class="form-row"><label>Qty Achieved Today (${escHtml(item.unit||'units')})</label><input id="pt-log-qty" type="number" placeholder="e.g. 50" min="0" value="${todayLog?todayLog.qty:''}"/></div>
+    </div>
+    <div class="form-row"><label>Note / Remark</label><textarea id="pt-log-note" rows="2" placeholder="Progress note, issues faced...">${todayLog?escHtml(todayLog.note||''):''}</textarea></div>
+    <div class="btn-row"><button class="btn-primary" onclick="ptSaveLog('${taskId}','${subId||''}')">💾 Save Log</button><button class="btn-secondary" onclick="closeModal()">Cancel</button></div>
+  </div>`);
+}
+function ptSaveLog(taskId,subId){
+  const item=subId?ptGetSubtask(window.PT_SITE,taskId,subId):ptGetTask(window.PT_SITE,taskId);
+  if(!item)return;
+  const date=document.getElementById('pt-log-date')?.value||new Date().toISOString().split('T')[0];
+  const qty=parseFloat(document.getElementById('pt-log-qty')?.value)||0;
+  const note=document.getElementById('pt-log-note')?.value.trim()||'';
+  if(!item.dailyLogs)item.dailyLogs=[];
+  // Upsert by date
+  const idx=item.dailyLogs.findIndex(l=>l.date===date);
+  const entry={date,qty,note,by:window.CU||'unknown'};
+  if(idx>=0)item.dailyLogs[idx]=entry;
+  else item.dailyLogs.push(entry);
+  ptSave(window.PT_SITE);
+  closeModal();
+  ptRender();
+  showToast('✅ Progress logged for '+date,'success');
+}
+
+// ── VIEW LOGS ─────────────────────────────────────────────
+function ptViewLogs(taskId,subId){
+  const item=subId?ptGetSubtask(window.PT_SITE,taskId,subId):ptGetTask(window.PT_SITE,taskId);
+  if(!item)return;
+  const logs=[...(item.dailyLogs||[])].sort((a,b)=>b.date.localeCompare(a.date));
+  const h=ptCalcHealth(item);
+  openModal(`📋 Logs — ${escHtml(item.title)}`,`<div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;background:var(--bg2);padding:10px;border-radius:8px;margin-bottom:12px;text-align:center">
+      <div><div style="font-size:18px;font-weight:700;color:var(--gold)">${h.done} / ${h.total}</div><div style="font-size:11px;color:var(--text2)">${escHtml(item.unit||'units')}</div></div>
+      <div><div style="font-size:18px;font-weight:700;color:${h.color}">${h.pct}%</div><div style="font-size:11px;color:var(--text2)">Complete</div></div>
+      <div><div style="font-size:18px;font-weight:700;color:var(--text)">${logs.length}</div><div style="font-size:11px;color:var(--text2)">Log entries</div></div>
+    </div>
+    ${logs.length?`<table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:var(--navy3)"><th style="padding:6px 8px;text-align:left">Date</th><th style="padding:6px 8px;text-align:right">Qty</th><th style="padding:6px 8px;text-align:left">Note</th><th style="padding:6px 8px;text-align:center">By</th><th></th></tr></thead>
+      <tbody>${logs.map(l=>`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px">${l.date}</td>
+        <td style="padding:5px 8px;text-align:right;font-weight:700;color:var(--gold)">${l.qty} ${escHtml(item.unit||'')}</td>
+        <td style="padding:5px 8px;color:var(--text2)">${escHtml(l.note||'—')}</td>
+        <td style="padding:5px 8px;text-align:center;color:var(--text2)">${escHtml(l.by||'')}</td>
+        <td style="padding:5px 4px"><button onclick="ptDeleteLog('${taskId}','${subId||''}','${l.date}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:11px">🗑️</button></td>
+      </tr>`).join('')}</tbody>
+    </table>`:`<div style="text-align:center;color:var(--text2);padding:20px">No logs yet. Start logging daily progress.</div>`}
+    <div class="btn-row" style="margin-top:12px"><button class="btn-primary btn-sm" onclick="closeModal();ptOpenDailyLog('${taskId}','${subId||''}')">+ Add Today's Log</button><button class="btn-secondary" onclick="closeModal()">Close</button></div>
+  </div>`);
+}
+function ptDeleteLog(taskId,subId,date){
+  if(!confirm('Delete log for '+date+'?'))return;
+  const item=subId?ptGetSubtask(window.PT_SITE,taskId,subId):ptGetTask(window.PT_SITE,taskId);
+  if(!item)return;
+  item.dailyLogs=(item.dailyLogs||[]).filter(l=>l.date!==date);
+  ptSave(window.PT_SITE);
+  closeModal();
+  ptRender();
+  showToast('Log deleted','info');
+}
+
+// ── EXCEL EXPORT ──────────────────────────────────────────
+function ptExportExcel(){
+  const siteCode=window.PT_SITE;
+  const tasks=(window.PT_DATA[siteCode]||{tasks:[]}).tasks;
+  if(!tasks.length){showToast('No tasks to export','info');return;}
+  const rows=[['Task','Subtask','Unit','Total Qty','Done Qty','% Done','Start Date','Duration(days)','Expected End','Actual End','Status','Last Note']];
+  tasks.forEach(task=>{
+    const hasSubs=task.subtasks&&task.subtasks.length>0;
+    const items=hasSubs?task.subtasks.map(s=>({...s,_taskTitle:task.title})):[{...task,_taskTitle:''}];
+    items.forEach(item=>{
+      const h=ptCalcHealth(item);
+      const expEnd=ptExpectedEnd(item.startDate,item.durationDays);
+      const actEnd=ptActualEnd(item)||'';
+      const lastLog=[...(item.dailyLogs||[])].sort((a,b)=>b.date.localeCompare(a.date))[0];
+      rows.push([
+        hasSubs?item._taskTitle:task.title,
+        hasSubs?item.title:'',
+        item.unit||'',
+        item.totalQty||0,
+        h.done,
+        h.pct+'%',
+        item.startDate||'',
+        item.durationDays||'',
+        expEnd,
+        actEnd,
+        h.status,
+        lastLog?lastLog.note:''
+      ]);
+    });
+  });
+  try{
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:25},{wch:25},{wch:8},{wch:10},{wch:10},{wch:8},{wch:12},{wch:12},{wch:14},{wch:14},{wch:14},{wch:30}];
+    XLSX.utils.book_append_sheet(wb,ws,'Timeline_'+siteCode);
+    XLSX.writeFile(wb,'1WC_Timeline_'+siteCode+'_'+new Date().toISOString().split('T')[0]+'.xlsx');
+    showToast('✅ Excel downloaded','success');
+  }catch(e){showToast('Excel export failed: '+e.message,'error');}
+}
+
+function pageExecution(){
+  const sites=window.SITES||[];
+  const activeSites=sites.filter(s=>s.status==='active');
+  window.PT_SITE=window.PT_SITE||( activeSites[0]?activeSites[0].code:'' );
+  if(window.PT_SITE) ptLoad(window.PT_SITE);
+
+  c.innerHTML=`
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div class="page-title" style="margin:0">📅 Project Timeline</div>
+    <div class="btn-row" style="margin:0">
+      <button class="btn-primary btn-sm" onclick="ptOpenAddTask()">+ Add Task</button>
+      <button class="btn-secondary btn-sm" onclick="ptExportExcel()">📥 Excel</button>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <select id="pt-site-sel" onchange="ptSiteChanged()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-weight:700;font-size:13px">
+        ${activeSites.map(s=>`<option value="${s.code}" ${s.code===window.PT_SITE?'selected':''}>${s.name}</option>`).join('')||'<option value="">No active sites — add sites in Project Manager</option>'}
+      </select>
+      <div id="pt-site-health-badge"></div>
+      <div id="pt-cloud-status" style="font-size:11px;color:var(--text2)"></div>
+    </div>
+  </div>
+  <div id="pt-main"></div>`;
+
+  ptRender();
+}
+// ── OLD pageExecution removed — see new pageExecution above ──
+function _pageExecution_REMOVED_PLACEHOLDER(){
+  // placeholder — not called
   c.innerHTML=`
   <div class="page-title">🏗️ Execution & Site Progress</div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:16px">
