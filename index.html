@@ -559,14 +559,24 @@ let VENDOR_COMPARISONS=[
 ];
 
 // ======================== GLOBAL PERSISTENT STORES ========================
-// ATT_EMPLOYEES
-window.ATT_EMPLOYEES=(()=>{try{const s=localStorage.getItem('1wc_att_employees');if(s)return JSON.parse(s);}catch(e){}return[
-  {id:'ajay',name:'Ajay Kumar',role:'Site Supervisor',wageType:'salary',wage:28000},
-  {id:'fathe',name:'Fathe Mian',role:'Technician',wageType:'daily',wage:650},
-  {id:'raju',name:'Raju Singh',role:'Helper',wageType:'daily',wage:500},
-  {id:'naval',name:'Naval Kishor',role:'Electrician',wageType:'daily',wage:600},
-];})();
-function saveATTEmployees(){try{localStorage.setItem('1wc_att_employees',JSON.stringify(window.ATT_EMPLOYEES));}catch(e){}}
+// ATT_EMPLOYEES — now PER SITE. Use getAttEmployees(siteCode) / saveAttEmployees(siteCode, arr)
+// Global ATT_EMPLOYEES kept for backward compat but not the primary store
+window.ATT_EMPLOYEES=[];
+function getAttEmployees(siteCode){
+  if(!siteCode)return[];
+  try{const s=localStorage.getItem('1wc_att_emp_'+siteCode);if(s)return JSON.parse(s);}catch(e){}
+  // seed default employees only for the first-ever site
+  return[];
+}
+function saveAttEmployees(siteCode,arr){
+  if(!siteCode)return;
+  try{localStorage.setItem('1wc_att_emp_'+siteCode,JSON.stringify(arr));}catch(e){}
+}
+// kept for backward compat with old calls
+function saveATTEmployees(){
+  const site=document.getElementById('att-site')?.value||'';
+  saveAttEmployees(site,window.ATT_EMPLOYEES);
+}
 
 // ATT_SITES seeded from SITES
 window.ATT_SITES=(()=>{try{const s=localStorage.getItem('1wc_att_sites');if(s)return JSON.parse(s);}catch(e){}return SITES.filter(s=>s.status==='active').map(s=>({code:s.code,name:s.name}));})();
@@ -778,7 +788,18 @@ function importFromExcel(file,callback){
 }
 
 // State
-let CU=null,currentPage='dashboard',taskChecked={},sidebarOpen=false;
+let CU=null,currentPage='dashboard',sidebarOpen=false;
+// taskChecked persisted per user per date
+function loadTaskChecked(){
+  const today=new Date().toISOString().split('T')[0];
+  try{const s=localStorage.getItem('1wc_tasks_'+CU+'_'+today);if(s)return JSON.parse(s);}catch(e){}
+  return{};
+}
+function saveTaskChecked(){
+  const today=new Date().toISOString().split('T')[0];
+  try{localStorage.setItem('1wc_tasks_'+CU+'_'+today,JSON.stringify(taskChecked));}catch(e){}
+}
+let taskChecked={};
 let attendance_data={};
 
 // ======================== NAV ========================
@@ -875,6 +896,7 @@ function doLogin(){
   const sel=document.getElementById('user-select').value;
   if(!sel){showToast('⚠️ Please select your profile','info');return;}
   CU=sel; window.CU=sel;
+  taskChecked=loadTaskChecked(); // restore today's SOP progress
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='block';
   initApp();
@@ -1243,8 +1265,17 @@ function pageTasks(){
     </div>
   </div>`;
 }
-function toggleTask(i){taskChecked[i]=!taskChecked[i];showPage('tasks');}
-function markAllDone(){(SOPs[CU]||[]).forEach((_,i)=>taskChecked[i]=true);showPage('tasks');showToast('✅ All tasks marked complete!','success');}
+function toggleTask(i){
+  taskChecked[i]=!taskChecked[i];
+  saveTaskChecked();
+  showPage('tasks');
+}
+function markAllDone(){
+  (SOPs[CU]||[]).forEach((_,i)=>taskChecked[i]=true);
+  saveTaskChecked();
+  showPage('tasks');
+  showToast('✅ All tasks marked complete!','success');
+}
 function addAdhocTask(){
   const v=document.getElementById('adhoc-task').value.trim();
   if(!v){showToast('Write the task first','error');return;}
@@ -1304,7 +1335,22 @@ function pageEOD(){
     <div class="card-title">${hin?'Aaj Ka EOD Update':'End of Day Report'}</div>
     <div class="row2">
       <div class="form-row"><label>${hin?'Tarikh':'Date'}</label><input type="date" value="${new Date().toISOString().split('T')[0]}" /></div>
-      <div class="form-row"><label>Site</label><select>${SITES.map(s=>`<option>${s.name}</option>`).join('')}</select></div>
+      <div class="form-row"><label>Site / Department</label>
+        <select id="eod-site">
+          <optgroup label="🏗️ Project Sites">
+            ${SITES.map(s=>`<option value="${s.code}">${s.code} – ${s.name}</option>`).join('')}
+          </optgroup>
+          <optgroup label="🏢 Departments / Functions">
+            <option value="sales">Sales</option>
+            <option value="accounts">Accounts</option>
+            <option value="purchase">Purchase</option>
+            <option value="planning">Planning</option>
+            <option value="execution">Execution</option>
+            <option value="marketing">Marketing</option>
+            <option value="miscellaneous">Miscellaneous</option>
+          </optgroup>
+        </select>
+      </div>
     </div>
     <div class="form-row"><label>${hin?'Aaj Kya Kiya (Progress)':'Work Done Today'}</label>
       <textarea rows="4" placeholder="${hin?'Aaj ke kaam ka description...':'Describe today\'s progress...'}" id="eod-summary"></textarea></div>
@@ -1354,8 +1400,9 @@ async function submitEOD(){
   const issues=document.getElementById('eod-issues')?.value||'';
   const mood=document.querySelector('input[name="eod-mood"]:checked')?.value||'';
   const escalation=document.getElementById('eod-owner')?.value||'';
+  const site=document.getElementById('eod-site')?.value||'';
   if(!summary){showToast('⚠️ Please fill today\'s work summary','info');return;}
-  const data={summary,tomorrow,issues,mood,escalation};
+  const data={summary,tomorrow,issues,mood,escalation,site};
   showToast('⏳ Submitting EOD...','info');
   if(window.fbSaveEOD){
     const ok=await window.fbSaveEOD(data);
@@ -2685,6 +2732,9 @@ function pageExecution(){
 function pageAttendance(){
   const today=new Date();
   const defaultMonth=today.toISOString().substr(0,7);
+  // Load employees for first site
+  const firstSite=window.ATT_SITES[0]?window.ATT_SITES[0].code:'';
+  window.ATT_EMPLOYEES=getAttEmployees(firstSite);
   c.innerHTML=`
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
     <div class="page-title" style="margin:0">📋 Attendance Register</div>
@@ -2693,21 +2743,21 @@ function pageAttendance(){
       <button class="btn-secondary btn-sm" onclick="openAddAttSite()">📍 Add Site</button>
       <button class="btn-secondary btn-sm" onclick="attExportExcel()">📥 Excel</button>
       <button class="btn-secondary btn-sm" onclick="downloadAttendancePDF()">📄 PDF</button>
-      <button class="btn-primary btn-sm" onclick="attSaveToCloud()">☁️ Save</button>
+      <button class="btn-primary btn-sm" onclick="attSaveToCloud()">☁️ Save to Cloud</button>
     </div>
   </div>
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-      <select id="att-site" onchange="renderAttGrid()" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text)">
+      <select id="att-site" onchange="attSiteChanged()" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-weight:700">
         ${window.ATT_SITES.map(s=>`<option value="${s.code}">${s.name} (${s.code})</option>`).join('')}
       </select>
       <input id="att-month" type="month" value="${defaultMonth}" onchange="renderAttGrid()" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text)"/>
       <div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11px">
         <span style="background:var(--green)22;color:var(--green);padding:3px 8px;border-radius:12px;font-weight:700">P=Present</span>
         <span style="background:var(--red)22;color:var(--red);padding:3px 8px;border-radius:12px;font-weight:700">A=Absent</span>
-        <span style="background:#99922;color:#999;padding:3px 8px;border-radius:12px;font-weight:700">W=Week Off</span>
+        <span style="background:#55555522;color:#999;padding:3px 8px;border-radius:12px;font-weight:700">W=Week Off</span>
         <span style="background:var(--blue)22;color:var(--blue);padding:3px 8px;border-radius:12px;font-weight:700">H=Holiday</span>
-        <span style="color:var(--text2);padding:3px 8px">OT=Overtime hours (decimal ok)</span>
+        <span style="color:var(--text2);padding:3px 8px;font-size:10px">OT col = overtime hours (0–16, decimals ok)</span>
       </div>
     </div>
   </div>
@@ -2715,6 +2765,12 @@ function pageAttendance(){
     <div id="att-table-wrap"></div>
   </div>
   <div class="card" id="att-wages-summary" style="margin-bottom:16px"></div>`;
+  renderAttGrid();
+}
+function attSiteChanged(){
+  // When site changes, reload that site's employees
+  const site=document.getElementById('att-site')?.value||'';
+  window.ATT_EMPLOYEES=getAttEmployees(site);
   renderAttGrid();
 }
 function getDaysInMonth(monthStr){
@@ -2737,8 +2793,48 @@ function getCell(eAtt,d){
   const raw=eAtt[d];
   if(!raw)return{s:'',ot:0};
   if(typeof raw==='object')return{s:raw.s||'',ot:parseFloat(raw.ot)||0};
-  // legacy string format
   return{s:raw,ot:0};
+}
+// ── Wage calculation per worker type ──────────────────────────────
+// workerType: 'labour' | 'employee'
+// LABOUR: monthly/26 per day. Sunday = W (unpaid) unless marked P.
+// EMPLOYEE: monthly/daysInMonth per day. Sunday = W but PAID. 1.5 paid leaves/month.
+// For both: A = no pay. P = full day pay. OT = (daily_rate/8)*OT_hours
+function calcWages(emp, attData, monthStr){
+  const numDays=getDaysInMonth(monthStr);
+  const [yr,mo]=monthStr.split('-').map(Number);
+  const wt=emp.workerType||'labour';
+  const dailyRate=wt==='labour'?(emp.wage/26):(emp.wage/numDays);
+  let totalPay=0, pCount=0, aCount=0, wCount=0, otTotal=0;
+  for(let d=1;d<=numDays;d++){
+    const cell=getCell(attData,d);
+    const dow=new Date(yr,mo-1,d).getDay(); // 0=Sun
+    const isSunday=dow===0;
+    const status=cell.s;
+    const ot=cell.ot||0;
+    otTotal+=ot;
+    if(status==='P'){
+      pCount++;
+      totalPay+=dailyRate;
+      totalPay+=(dailyRate/8)*ot;
+    } else if(status==='A'){
+      aCount++;
+      // no pay
+    } else if(status==='W'||status===''){
+      // Week Off
+      wCount++;
+      if(wt==='employee'&&isSunday){
+        // Employee Sunday = paid week off
+        totalPay+=dailyRate;
+      }
+      // Labour Sunday = unpaid unless they marked P (already handled above)
+    } else if(status==='H'){
+      // Holiday = paid for employee, unpaid for labour unless they work OT
+      if(wt==='employee') totalPay+=dailyRate;
+      totalPay+=(dailyRate/8)*ot;
+    }
+  }
+  return{totalPay,pCount,aCount,wCount,otTotal,dailyRate};
 }
 function renderAttGrid(){
   const wrap=document.getElementById('att-table-wrap');
@@ -2746,72 +2842,78 @@ function renderAttGrid(){
   if(!wrap)return;
   const monthStr=document.getElementById('att-month')?.value||new Date().toISOString().substr(0,7);
   const numDays=getDaysInMonth(monthStr);
+  const [yr,mo]=monthStr.split('-').map(Number);
   const days=Array.from({length:numDays},(_,i)=>i+1);
   const attData=loadAttData();
+  // Reload employees for current site
+  const site=document.getElementById('att-site')?.value||'';
+  window.ATT_EMPLOYEES=getAttEmployees(site);
   let totalWages=0;
-  // Each day needs 2 sub-columns: status select + OT input
-  // Header: day number spanning 2, sub-header P/A | OT
-  const dayHeaders=days.map(d=>`<th colspan="2" style="padding:3px 2px;text-align:center;font-weight:700;border-left:1px solid var(--border)">${d}</th>`).join('');
-  const subHeaders=days.map(d=>`<th style="padding:2px 1px;text-align:center;font-size:9px;color:var(--text2);border-left:1px solid var(--border)">P/A</th><th style="padding:2px 1px;text-align:center;font-size:9px;color:var(--text2)">OT</th>`).join('');
+  // Day headers with Sunday highlight
+  const dayHeaders=days.map(d=>{
+    const isSun=new Date(yr,mo-1,d).getDay()===0;
+    return `<th colspan="2" style="padding:3px 2px;text-align:center;font-weight:700;border-left:1px solid var(--border);${isSun?'color:var(--orange);':''}font-size:10px">${d}${isSun?'☀':''}`;
+  }).join('</th>');
+  const subHeaders=days.map(()=>`<th style="padding:2px 1px;text-align:center;font-size:9px;color:var(--text2);border-left:1px solid var(--border)">P/A</th><th style="padding:2px 1px;text-align:center;font-size:9px;color:var(--text2)">OT</th>`).join('');
+  if(!window.ATT_EMPLOYEES.length){
+    wrap.innerHTML='<div style="padding:30px;text-align:center;color:var(--text2)">No employees added for this site yet.<br>Click <b>👤 Add Employee</b> to get started.</div>';
+    if(summary)summary.innerHTML='';
+    return;
+  }
   const rows=window.ATT_EMPLOYEES.map(e=>{
     const eAtt=attData[e.id]||{};
-    let pCount=0,aCount=0,otTotal=0;
+    const wt=e.workerType||'labour';
+    const {totalPay,pCount,aCount,wCount,otTotal}=calcWages(e,eAtt,monthStr);
+    totalWages+=totalPay;
     const cells=days.map(d=>{
       const cell=getCell(eAtt,d);
-      if(cell.s==='P')pCount++;
-      else if(cell.s==='A')aCount++;
-      const scMap={P:'var(--green)',A:'var(--red)',W:'#999',H:'var(--blue)'};
-      const bg=cell.s?(scMap[cell.s]||'var(--bg2)')+'22':'var(--bg2)';
+      const isSun=new Date(yr,mo-1,d).getDay()===0;
+      const scMap={P:'var(--green)',A:'var(--red)',W:'#777',H:'var(--blue)'};
+      const bg=cell.s?(scMap[cell.s]||'var(--bg2)')+'22':(isSun?'rgba(255,150,0,0.08)':'var(--bg2)');
       const col=cell.s?(scMap[cell.s]||'var(--text)'):'var(--text2)';
-      otTotal+=cell.ot||0;
-      return `<td style="text-align:center;padding:1px 1px;border-left:1px solid var(--border)">
-        <select data-emp="${e.id}" data-day="${d}" onchange="attStatusChange(this)" style="font-size:10px;padding:1px 0;border:1px solid var(--border);background:${bg};color:${col};border-radius:3px;width:30px;cursor:pointer">
-          <option value="" ${cell.s===''?'selected':''}>—</option>
-          <option value="P" ${cell.s==='P'?'selected':''}>P</option>
-          <option value="A" ${cell.s==='A'?'selected':''}>A</option>
-          <option value="W" ${cell.s==='W'?'selected':''}>W</option>
-          <option value="H" ${cell.s==='H'?'selected':''}>H</option>
-        </select>
-      </td>
-      <td style="text-align:center;padding:1px 1px">
-        <input type="number" data-emp="${e.id}" data-day="${d}" data-field="ot" onchange="attOTChange(this)" value="${cell.ot||''}" placeholder="0" min="0" max="16" step="0.5" style="font-size:10px;width:30px;padding:1px 2px;border:1px solid var(--border);background:var(--bg2);color:${cell.ot>0?'var(--orange)':'var(--text2)'};border-radius:3px;text-align:center"/>
-      </td>`;
+      return '<td style="text-align:center;padding:1px 1px;border-left:1px solid var(--border)">'
+        +'<select data-emp="'+e.id+'" data-day="'+d+'" onchange="attStatusChange(this)" style="font-size:10px;padding:1px 0;border:1px solid var(--border);background:'+bg+';color:'+col+';border-radius:3px;width:30px;cursor:pointer">'
+        +'<option value="" '+(cell.s===''?'selected':'')+'>—</option>'
+        +'<option value="P" '+(cell.s==='P'?'selected':'')+'>P</option>'
+        +'<option value="A" '+(cell.s==='A'?'selected':'')+'>A</option>'
+        +'<option value="W" '+(cell.s==='W'?'selected':'')+'>W</option>'
+        +'<option value="H" '+(cell.s==='H'?'selected':'')+'>H</option>'
+        +'</select>'
+        +'</td>'
+        +'<td style="text-align:center;padding:1px 1px">'
+        +'<input type="number" data-emp="'+e.id+'" data-day="'+d+'" onchange="attOTChange(this)" value="'+(cell.ot||'')+'" placeholder="0" min="0" max="16" step="0.5" style="font-size:10px;width:30px;padding:1px 2px;border:1px solid var(--border);background:var(--bg2);color:'+(cell.ot>0?'var(--orange)':'var(--text2)')+';border-radius:3px;text-align:center"/>'
+        +'</td>';
     }).join('');
-    let wages=0;
-    if(e.wageType==='salary') wages=e.wage;
-    else wages=pCount*e.wage;
-    const otPay=otTotal*(e.wageType==='salary'?(e.wage/26/8):(e.wage/8));
-    totalWages+=wages+otPay;
-    return `<tr style="border-bottom:1px solid var(--border)" data-emp-row="${e.id}">
-      <td style="padding:6px 8px;white-space:nowrap;min-width:150px;border-right:1px solid var(--border)">
-        <div style="font-weight:600;font-size:12px">${e.name}</div>
-        <div style="font-size:10px;color:var(--text2)">${e.role}</div>
-        <div style="font-size:10px;color:var(--gold)">${e.wageType==='salary'?'₹'+e.wage+'/mo':'₹'+e.wage+'/day'}</div>
-      </td>
-      ${cells}
-      <td class="att-p" style="text-align:center;font-weight:700;color:var(--green);padding:4px 5px;border-left:2px solid var(--border)">${pCount}</td>
-      <td class="att-a" style="text-align:center;font-weight:700;color:var(--red);padding:4px 5px">${aCount}</td>
-      <td class="att-ot" style="text-align:center;font-weight:700;color:var(--orange);padding:4px 5px">${otTotal>0?otTotal:0}</td>
-      <td class="att-wages" style="text-align:right;font-weight:700;padding:4px 8px;color:var(--gold);white-space:nowrap">₹${(wages+otPay).toLocaleString('en-IN',{maximumFractionDigits:0})}</td>
-      <td style="text-align:center;padding:4px 5px"><button onclick="deleteEmployee('${e.id}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px" title="Remove Employee">🗑️</button></td>
-    </tr>`;
+    const wtTag=wt==='employee'?'<span style="font-size:9px;background:var(--blue)22;color:var(--blue);border-radius:8px;padding:1px 5px">Staff</span>':'<span style="font-size:9px;background:var(--orange)22;color:var(--orange);border-radius:8px;padding:1px 5px">Labour</span>';
+    return '<tr style="border-bottom:1px solid var(--border)" data-emp-row="'+e.id+'">'
+      +'<td style="padding:6px 8px;white-space:nowrap;min-width:155px;border-right:1px solid var(--border)">'
+      +'<div style="font-weight:600;font-size:12px">'+e.name+' '+wtTag+'</div>'
+      +'<div style="font-size:10px;color:var(--text2)">'+e.role+'</div>'
+      +'<div style="font-size:10px;color:var(--gold)">₹'+e.wage.toLocaleString('en-IN')+'/mo</div>'
+      +'</td>'
+      +cells
+      +'<td class="att-p" style="text-align:center;font-weight:700;color:var(--green);padding:4px 5px;border-left:2px solid var(--border)">'+pCount+'</td>'
+      +'<td class="att-a" style="text-align:center;font-weight:700;color:var(--red);padding:4px 5px">'+aCount+'</td>'
+      +'<td class="att-ot" style="text-align:center;font-weight:700;color:var(--orange);padding:4px 5px">'+(otTotal||0)+'</td>'
+      +'<td class="att-wages" style="text-align:right;font-weight:700;padding:4px 8px;color:var(--gold);white-space:nowrap">₹'+Math.round(totalPay).toLocaleString('en-IN')+'</td>'
+      +'<td style="text-align:center;padding:4px 5px"><button onclick="deleteEmployee(\''+e.id+'\')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px" title="Remove">🗑️</button></td>'
+      +'</tr>';
   }).join('');
-  wrap.innerHTML=`<table style="border-collapse:collapse;font-size:11px;width:100%;min-width:${160+numDays*68+200}px">
-    <thead>
-      <tr style="background:var(--navy3)">
-        <th style="padding:8px 10px;text-align:left;border-right:1px solid var(--border)" rowspan="2">Employee</th>
-        ${dayHeaders}
-        <th colspan="3" style="padding:4px 5px;text-align:center;border-left:2px solid var(--border);color:var(--text2);font-size:10px" rowspan="2">Summary</th>
-        <th style="padding:4px 8px;text-align:right;color:var(--gold);font-size:10px" rowspan="2">Wages+OT</th>
-        <th rowspan="2"></th>
-      </tr>
-      <tr style="background:var(--navy3)">
-        ${subHeaders}
-      </tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table>`;
-  updateAttWagesSummary();
+  wrap.innerHTML='<table style="border-collapse:collapse;font-size:11px;width:100%;min-width:'+(160+numDays*65+220)+'px">'
+    +'<thead><tr style="background:var(--navy3)">'
+    +'<th style="padding:8px 10px;text-align:left;border-right:1px solid var(--border)" rowspan="2">Employee</th>'
+    +dayHeaders
+    +'<th colspan="3" style="padding:4px 5px;text-align:center;border-left:2px solid var(--border);color:var(--text2);font-size:10px" rowspan="2">Summary</th>'
+    +'<th style="padding:4px 8px;text-align:right;color:var(--gold);font-size:10px" rowspan="2">Net Pay</th>'
+    +'<th rowspan="2"></th>'
+    +'</tr>'
+    +'<tr style="background:var(--navy3)">'+subHeaders+'</tr>'
+    +'</thead><tbody>'+rows+'</tbody></table>';
+  if(summary)summary.innerHTML='<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">'
+    +'<div style="font-weight:700;font-size:15px">💰 Total Net Payable: <span style="color:var(--gold)">₹'+Math.round(totalWages).toLocaleString('en-IN')+'</span></div>'
+    +'<div style="font-size:12px;color:var(--text2)">Month: '+monthStr+' | Site: '+site+'</div>'
+    +'<div style="font-size:11px;color:var(--text2)">Labour: monthly÷26 days. Staff: monthly÷days in month. OT = daily_rate÷8×hrs. Staff Sundays paid.</div>'
+    +'</div>';
 }
 function attStatusChange(sel){
   const empId=sel.dataset.emp;
@@ -2822,11 +2924,9 @@ function attStatusChange(sel){
   const prev=getCell(data[empId],day);
   data[empId][day]={s:val,ot:prev.ot||0};
   saveAttData(data);
-  // recolor select
-  const scMap={P:'var(--green)',A:'var(--red)',W:'#999',H:'var(--blue)'};
+  const scMap={P:'var(--green)',A:'var(--red)',W:'#777',H:'var(--blue)'};
   sel.style.background=(val?(scMap[val]||'var(--bg2)')+'22':'var(--bg2)');
   sel.style.color=val?(scMap[val]||'var(--text)'):'var(--text2)';
-  // update row summary
   _updateAttRow(empId);
 }
 function attOTChange(inp){
@@ -2842,106 +2942,85 @@ function attOTChange(inp){
   _updateAttRow(empId);
 }
 function _updateAttRow(empId){
-  const row=document.querySelector(`tr[data-emp-row="${empId}"]`);
+  const row=document.querySelector('tr[data-emp-row="'+empId+'"]');
   if(!row)return;
+  const monthStr=document.getElementById('att-month')?.value||new Date().toISOString().substr(0,7);
   const data=loadAttData();
   const eAtt=data[empId]||{};
-  let p=0,a=0,otTotal=0;
-  row.querySelectorAll('select[data-emp]').forEach(sel=>{
-    const d=parseInt(sel.dataset.day);
-    const cell=getCell(eAtt,d);
-    if(cell.s==='P')p++;
-    else if(cell.s==='A')a++;
-  });
-  row.querySelectorAll('input[data-emp]').forEach(inp=>{
-    otTotal+=parseFloat(inp.value)||0;
-  });
   const emp=window.ATT_EMPLOYEES.find(e=>e.id===empId);
+  if(!emp)return;
+  const {totalPay,pCount,aCount,otTotal}=calcWages(emp,eAtt,monthStr);
   const pTd=row.querySelector('td.att-p');
   const aTd=row.querySelector('td.att-a');
   const otTd=row.querySelector('td.att-ot');
   const wTd=row.querySelector('td.att-wages');
-  if(pTd)pTd.textContent=p;
-  if(aTd)aTd.textContent=a;
-  if(otTd)otTd.textContent=otTotal>0?otTotal:0;
-  if(wTd&&emp){
-    let wages=emp.wageType==='salary'?emp.wage:p*emp.wage;
-    const otPay=otTotal*(emp.wageType==='salary'?(emp.wage/26/8):(emp.wage/8));
-    wTd.textContent='₹'+(wages+otPay).toLocaleString('en-IN',{maximumFractionDigits:0});
-  }
+  if(pTd)pTd.textContent=pCount;
+  if(aTd)aTd.textContent=aCount;
+  if(otTd)otTd.textContent=otTotal||0;
+  if(wTd)wTd.textContent='₹'+Math.round(totalPay).toLocaleString('en-IN');
   updateAttWagesSummary();
 }
 function updateAttWagesSummary(){
-  const data=loadAttData();
   const monthStr=document.getElementById('att-month')?.value||new Date().toISOString().substr(0,7);
+  const site=document.getElementById('att-site')?.value||'';
+  const data=loadAttData();
   let total=0;
   window.ATT_EMPLOYEES.forEach(e=>{
-    const eAtt=data[e.id]||{};
-    let p=0,otTotal=0;
-    Object.entries(eAtt).forEach(([d,raw])=>{
-      const cell=getCell(eAtt,parseInt(d));
-      if(cell.s==='P')p++;
-      otTotal+=cell.ot||0;
-    });
-    let wages=e.wageType==='salary'?e.wage:p*e.wage;
-    const otPay=otTotal*(e.wageType==='salary'?(e.wage/26/8):(e.wage/8));
-    total+=wages+otPay;
+    const {totalPay}=calcWages(e,data[e.id]||{},monthStr);
+    total+=totalPay;
   });
   const s=document.getElementById('att-wages-summary');
-  if(s)s.innerHTML=`<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
-    <div style="font-weight:700;font-size:15px">💰 Total Payable: <span style="color:var(--gold)">₹${total.toLocaleString('en-IN',{maximumFractionDigits:0})}</span> — ${monthStr}</div>
-    <div style="font-size:12px;color:var(--text2)">(includes basic wages + OT pay)</div>
-  </div>`;
+  if(s)s.innerHTML='<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">'
+    +'<div style="font-weight:700;font-size:15px">💰 Total Net Payable: <span style="color:var(--gold)">₹'+Math.round(total).toLocaleString('en-IN')+'</span></div>'
+    +'<div style="font-size:12px;color:var(--text2)">Month: '+monthStr+' | Site: '+site+'</div></div>';
 }
 function deleteEmployee(id){
-  if(!confirm('Remove this employee from the attendance list?'))return;
+  if(!confirm('Remove this employee from this site?'))return;
+  const site=document.getElementById('att-site')?.value||'';
   window.ATT_EMPLOYEES=window.ATT_EMPLOYEES.filter(e=>e.id!==id);
-  saveATTEmployees();
+  saveAttEmployees(site,window.ATT_EMPLOYEES);
   renderAttGrid();
   showToast('Employee removed','info');
 }
 function openAddEmployee(){
-  openModal('👤 Add Employee','<div class="eod-form">'
+  openModal('👤 Add Employee to This Site','<div class="eod-form">'
     +'<div class="row2">'
     +'<div class="form-row"><label>Full Name *</label><input id="emp-name" placeholder="e.g. Ramesh Kumar"/></div>'
     +'<div class="form-row"><label>Role / Designation</label><input id="emp-role" placeholder="Technician, Helper, Supervisor..."/></div>'
     +'</div>'
-    +'<div class="row2">'
-    +'<div class="form-row"><label>Wage Type</label>'
-    +'<select id="emp-wtype"><option value="daily">Daily Wage</option><option value="salary">Monthly Salary</option></select>'
-    +'</div>'
-    +'<div class="form-row"><label id="emp-wage-lbl">Daily Wage (₹)</label><input id="emp-wage" type="number" placeholder="500" min="0"/></div>'
-    +'</div>'
+    +'<div class="form-row"><label>Worker Type *</label>'
+    +'<select id="emp-wtype">'
+    +'<option value="labour">👷 Labour (daily wage ÷ 26, Sunday unpaid)</option>'
+    +'<option value="employee">👔 Employee / Staff (monthly ÷ days in month, Sunday paid)</option>'
+    +'</select></div>'
+    +'<div class="form-row"><label>Monthly Salary / Wage (₹)</label><input id="emp-wage" type="number" placeholder="e.g. 18000" min="0"/></div>'
     +'<div style="background:var(--bg2);padding:10px;border-radius:8px;font-size:12px;color:var(--text2);margin-top:4px">'
-    +'💡 OT pay is auto-calculated: Daily wage ÷ 8 hrs × OT hours. For salaried: Monthly ÷ 26 ÷ 8 × OT hrs.'
+    +'<b>Labour:</b> Pay = salary ÷ 26 × present days. Sunday = unpaid W unless marked P.<br>'
+    +'<b>Employee/Staff:</b> Pay = salary ÷ days-in-month. Sundays counted as paid W. 1.5 paid leaves/month. Absent = no pay.'
     +'</div>'
     +'<div class="btn-row" style="margin-top:16px"><button class="btn-primary" onclick="saveNewEmployee()">✅ Add Employee</button>'
     +'<button class="btn-secondary" onclick="closeModal()">Cancel</button></div>'
     +'</div>');
-  // wire up wage label change safely after DOM is set
-  setTimeout(()=>{
-    const wt=document.getElementById('emp-wtype');
-    const lbl=document.getElementById('emp-wage-lbl');
-    if(wt&&lbl)wt.addEventListener('change',function(){lbl.textContent=this.value==='salary'?'Monthly Salary (₹)':'Daily Wage (₹)';});
-  },50);
 }
 function saveNewEmployee(){
   const name=document.getElementById('emp-name')?.value.trim();
   const role=document.getElementById('emp-role')?.value.trim();
-  const wageType=document.getElementById('emp-wtype')?.value||'daily';
+  const workerType=document.getElementById('emp-wtype')?.value||'labour';
   const wage=parseFloat(document.getElementById('emp-wage')?.value)||0;
   if(!name){showToast('Enter employee name','info');return;}
+  if(!wage){showToast('Enter monthly salary/wage amount','info');return;}
+  const site=document.getElementById('att-site')?.value||'';
   const id='emp_'+Date.now();
-  window.ATT_EMPLOYEES.push({id,name,role:role||'Worker',wageType,wage});
-  saveATTEmployees();
+  window.ATT_EMPLOYEES.push({id,name,role:role||'Worker',workerType,wage,wageType:'salary'});
+  saveAttEmployees(site,window.ATT_EMPLOYEES);
   closeModal();
   renderAttGrid();
-  showToast('✅ Employee '+name+' added','success');
+  showToast('✅ '+name+' added to site '+site,'success');
 }
 function openAddAttSite(){
   openModal('📍 Add Site / Project','<div class="eod-form">'
-    +'<div class="form-row"><label>Site Code (short, no spaces)</label><input id="att-site-code" placeholder="e.g. DMRC-MG01"/></div>'
-    +'<div class="form-row"><label>Site / Project Full Name</label><input id="att-site-name" placeholder="e.g. DMRC Metro Gate Station"/></div>'
+    +'<div class="form-row"><label>Site Code (short, no spaces) *</label><input id="att-site-code" placeholder="e.g. DMRC-MG01"/></div>'
+    +'<div class="form-row"><label>Site / Project Full Name *</label><input id="att-site-name" placeholder="e.g. DMRC Metro Gate Station"/></div>'
     +'<div class="btn-row" style="margin-top:14px"><button class="btn-primary" onclick="saveNewAttSite()">✅ Add Site</button>'
     +'<button class="btn-secondary" onclick="closeModal()">Cancel</button></div>'
     +'</div>');
@@ -2953,7 +3032,6 @@ function saveNewAttSite(){
   if(window.ATT_SITES.find(s=>s.code===code)){showToast('Site code already exists','info');return;}
   window.ATT_SITES.push({code,name});
   saveATTSites();
-  // also add to global SITES array
   if(!window.SITES)window.SITES=[];
   if(!window.SITES.find(s=>s.code===code))window.SITES.push({code,name,status:'active'});
   try{localStorage.setItem('1wc_sites',JSON.stringify(window.SITES));}catch(e){}
@@ -2963,6 +3041,7 @@ function saveNewAttSite(){
     sel.innerHTML=window.ATT_SITES.map(s=>`<option value="${s.code}">${s.name} (${s.code})</option>`).join('');
     sel.value=code;
   }
+  window.ATT_EMPLOYEES=getAttEmployees(code);
   renderAttGrid();
   showToast('✅ Site '+name+' added','success');
 }
@@ -2973,30 +3052,34 @@ function attExportExcel(){
   const attData=loadAttData();
   const rows=window.ATT_EMPLOYEES.map(e=>{
     const eAtt=attData[e.id]||{};
-    const row={Name:e.name,Role:e.role,Wage_Type:e.wageType,Wage:e.wage};
-    let p=0,otTotal=0;
+    const {totalPay,pCount,otTotal}=calcWages(e,eAtt,monthStr);
+    const row={Name:e.name,Role:e.role,Worker_Type:e.workerType||'labour',Monthly_Wage:e.wage};
     for(let d=1;d<=numDays;d++){
       const cell=getCell(eAtt,d);
       row['D'+d+'_Status']=cell.s||'—';
       row['D'+d+'_OT']=cell.ot||0;
-      if(cell.s==='P')p++;
-      otTotal+=cell.ot||0;
     }
-    row.Present_Days=p;
+    row.Present_Days=pCount;
     row.OT_Hours=otTotal;
-    let wages=e.wageType==='salary'?e.wage:p*e.wage;
-    const otPay=otTotal*(e.wageType==='salary'?(e.wage/26/8):(e.wage/8));
-    row.Total_Wages=Math.round(wages+otPay);
+    row.Net_Pay=Math.round(totalPay);
     return row;
   });
   exportToExcel(rows,'1WC_Attendance_'+site+'_'+monthStr,'Attendance');
 }
 async function attSaveToCloud(){
-  const data={site:document.getElementById('att-site')?.value,month:document.getElementById('att-month')?.value,employees:window.ATT_EMPLOYEES,attendance:loadAttData()};
+  const site=document.getElementById('att-site')?.value||'';
+  const month=document.getElementById('att-month')?.value||'';
+  const data={site,month,employees:window.ATT_EMPLOYEES,attendance:loadAttData()};
   if(window.fbSaveAttendance){
     const ok=await window.fbSaveAttendance(data);
-    showToast(ok?'✅ Attendance saved to cloud':'⚠️ Cloud save failed','info');
-  } else {showToast('Cloud save not available — data is saved locally','info');}
+    showToast(ok?'✅ Attendance saved to cloud':'⚠️ Cloud save failed — check connection','info');
+  } else {
+    // fallback: save to localStorage with cloud-sync key so other users can read it
+    try{
+      localStorage.setItem('1wc_att_cloud_'+site+'_'+month,JSON.stringify(data));
+      showToast('✅ Attendance saved (shared storage)','success');
+    }catch(e){showToast('Saved locally only','info');}
+  }
 }
 // ═══════════════════════════════════════════════════════
 // GLOBAL PROJECT / SITE MANAGER
