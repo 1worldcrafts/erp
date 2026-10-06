@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -2958,8 +2958,14 @@ function ptOverallSiteHealth(siteCode){
 }
 
 function pageExecution(){
-  const sites=window.SITES||[];
-  const activeSites=sites.filter(s=>s.status==='active');
+  // Merge hardcoded SITES const with any dynamically added window.SITES entries
+  const baseSites=typeof SITES!=='undefined'?SITES:[];
+  const dynSites=window.SITES||[];
+  // Union by code: dynamic additions supplement the base list
+  const allSites=[...baseSites];
+  dynSites.forEach(ds=>{if(!allSites.find(s=>s.code===ds.code))allSites.push(ds);});
+  window.SITES=allSites; // keep window.SITES in sync
+  const activeSites=allSites.filter(s=>s.status==='active'||s.status==='amc');
   window.PT_SITE=window.PT_SITE||( activeSites[0]?activeSites[0].code:'' );
   if(window.PT_SITE) ptLoad(window.PT_SITE);
 
@@ -2974,7 +2980,7 @@ function pageExecution(){
   <div class="card" style="margin-bottom:14px">
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
       <select id="pt-site-sel" onchange="ptSiteChanged()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-weight:700;font-size:13px">
-        ${activeSites.map(s=>`<option value="${s.code}" ${s.code===window.PT_SITE?'selected':''}>${s.name}</option>`).join('')||'<option value="">No active sites</option>'}
+        ${activeSites.map(s=>`<option value="${s.code}" ${s.code===window.PT_SITE?'selected':''}>${s.code} – ${s.name}</option>`).join('')||'<option value="">No active sites</option>'}
       </select>
       <div id="pt-site-health-badge"></div>
       <div id="pt-cloud-status" style="font-size:11px;color:var(--text2)"></div>
@@ -3430,34 +3436,7 @@ function ptExportExcel(){
   }catch(e){showToast('Excel export failed: '+e.message,'error');}
 }
 
-function pageExecution(){
-  const sites=window.SITES||[];
-  const activeSites=sites.filter(s=>s.status==='active');
-  window.PT_SITE=window.PT_SITE||( activeSites[0]?activeSites[0].code:'' );
-  if(window.PT_SITE) ptLoad(window.PT_SITE);
-
-  c.innerHTML=`
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-    <div class="page-title" style="margin:0">📅 Project Timeline</div>
-    <div class="btn-row" style="margin:0">
-      <button class="btn-primary btn-sm" onclick="ptOpenAddTask()">+ Add Task</button>
-      <button class="btn-secondary btn-sm" onclick="ptExportExcel()">📥 Excel</button>
-    </div>
-  </div>
-  <div class="card" style="margin-bottom:14px">
-    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-      <select id="pt-site-sel" onchange="ptSiteChanged()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-weight:700;font-size:13px">
-        ${activeSites.map(s=>`<option value="${s.code}" ${s.code===window.PT_SITE?'selected':''}>${s.name}</option>`).join('')||'<option value="">No active sites — add sites in Project Manager</option>'}
-      </select>
-      <div id="pt-site-health-badge"></div>
-      <div id="pt-cloud-status" style="font-size:11px;color:var(--text2)"></div>
-    </div>
-  </div>
-  <div id="pt-main"></div>`;
-
-  ptRender();
-}
-// ── OLD pageExecution removed — see new pageExecution above ──
+// ── duplicate pageExecution removed — canonical version is above ──
 function _pageExecution_REMOVED_PLACEHOLDER(){
   // placeholder — not called
   c.innerHTML=`
