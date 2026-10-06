@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -774,6 +774,22 @@ window.VC_LIST=(()=>{try{const s=localStorage.getItem('1wc_vc');if(s)return JSON
 ];})();
 function saveVCList(){try{localStorage.setItem('1wc_vc',JSON.stringify(window.VC_LIST));}catch(e){}}
 
+// SALES_INVOICES
+window.SALES_INVOICES=(()=>{try{const s=localStorage.getItem('1wc_sales_invoices');if(s)return JSON.parse(s);}catch(e){}return[];})();
+function saveSalesInvoices(){try{localStorage.setItem('1wc_sales_invoices',JSON.stringify(window.SALES_INVOICES));}catch(e){}}
+
+// PETTY_CASH_ENTRIES
+window.PETTY_CASH_ENTRIES=(()=>{try{const s=localStorage.getItem('1wc_petty_cash');if(s)return JSON.parse(s);}catch(e){}return[];})();
+function savePettyCashEntries(){try{localStorage.setItem('1wc_petty_cash',JSON.stringify(window.PETTY_CASH_ENTRIES));}catch(e){}}
+
+// PURCHASE_REGISTER
+window.PURCHASE_REGISTER=(()=>{try{const s=localStorage.getItem('1wc_purchase_register');if(s)return JSON.parse(s);}catch(e){}return[];})();
+function savePurchaseRegister(){try{localStorage.setItem('1wc_purchase_register',JSON.stringify(window.PURCHASE_REGISTER));}catch(e){}}
+
+// STOCK_ITEMS
+window.STOCK_ITEMS=(()=>{try{const s=localStorage.getItem('1wc_stock');if(s)return JSON.parse(s);}catch(e){}return[];})();
+function saveStockItems(){try{localStorage.setItem('1wc_stock',JSON.stringify(window.STOCK_ITEMS));}catch(e){}}
+
 // PHOTO_UPLOADS
 window.PHOTO_UPLOADS=[];
 window.UPLOADED_FILES=[];
@@ -900,6 +916,9 @@ function downloadVendorComparePDF(){
   const header='<h2>1WorldCrafts – Vendor Comparison</h2>';
   downloadAsPDF(header+el.innerHTML,'1WC_VendorCompare.pdf');
 }
+
+// fmtINR utility
+function fmtINR(n){return '₹'+Number(n||0).toLocaleString('en-IN');}
 
 // Improvement 6: SheetJS helpers
 function exportToExcel(data,filename,sheetName){
@@ -1170,8 +1189,8 @@ function showPage(id){
     case 'eod': content.innerHTML=pageEOD();break;
     case 'sites': content.innerHTML=pageSites();break;
     case 'sales': content.innerHTML=pageSales(); loadSalesPipelineFromCloud(); renderQuotedJobs(); break;
-    case 'accounts': content.innerHTML=pageAccounts(); setTimeout(()=>{renderLedger();renderPL();renderContractors();},0); break;
-    case 'purchase': content.innerHTML=pagePurchase(); setTimeout(()=>{renderPRCards();renderVendorDB();},0); break;
+    case 'accounts': content.innerHTML=pageAccounts(); setTimeout(()=>{renderLedger();renderPLAuto();renderContractors();renderPettyCash();renderSalesInvoices();},0); break;
+    case 'purchase': content.innerHTML=pagePurchase(); setTimeout(()=>{renderPRCards();renderVendorDB();renderPurchaseRegister();renderStock();},0); break;
     case 'team-status': pageTeamStatus();break;
     case 'alerts': pageAlerts();break;
     case 'eod-owner': pageOwnerEODs().catch(e=>{c.innerHTML='<div class="card"><p style="color:var(--red)">Failed to load EOD reports. Check connection.</p></div>';console.error(e);});break;
@@ -2043,7 +2062,8 @@ function pageAccounts(){
   <div class="tabs">
     <div class="tab active" onclick="switchTab(this,'acc-tab','acc-ledger')">Ledger</div>
     <div class="tab" onclick="switchTab(this,'acc-tab','acc-projects')">Project P&amp;L</div>
-    <div class="tab" onclick="switchTab(this,'acc-tab','acc-cash')">Cash / Petty Cash</div>
+    <div class="tab" onclick="switchTab(this,'acc-tab','acc-cash')">Petty Cash</div>
+    <div class="tab" onclick="switchTab(this,'acc-tab','acc-sales-inv')">Sales Invoices</div>
     <div class="tab" onclick="switchTab(this,'acc-tab','acc-contractor')">Contractor Sheet</div>
     <div class="tab" onclick="switchTab(this,'acc-tab','acc-entry')">New Entry</div>
     <div class="tab" onclick="switchTab(this,'acc-tab','acc-import')">Import Excel</div>
@@ -2077,50 +2097,63 @@ function pageAccounts(){
   </div>
 
   <div class="acc-tab" id="acc-cash" style="display:none">
-    <div class="tabs" style="margin-bottom:16px">
-      <div class="tab active" onclick="switchTab(this,'cash-tab','cash-prayas')">Cash Payment (Prayas)</div>
-      <div class="tab" onclick="switchTab(this,'cash-tab','cash-petty')">Petty Cash (Kuldeep)</div>
-    </div>
-    <div class="cash-tab" id="cash-prayas">
-      <div class="card eod-form">
-        <div class="card-title">New Cash Payment Entry</div>
-        <div class="warn-box">⚠️ Project Code + Category are MANDATORY on every entry</div>
-        <div class="row2">
-          <div class="form-row"><label>Date</label><input id="cash-date" type="date" value="${new Date().toISOString().split('T')[0]}" /></div>
-          <div class="form-row"><label>Project Code ⚠️</label>
-            <select id="cash-project">${getProjectCodeOptions()}</select>
-          </div>
-        </div>
-        <div class="row2">
-          <div class="form-row"><label>Category ⚠️</label>
-            <select id="cash-category"><option value="">— Select Category —</option>${CASH_CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select>
-          </div>
-          <div class="form-row"><label>Amount (₹)</label><input id="cash-amount" type="number" placeholder="0" /></div>
-        </div>
-        <div class="form-row"><label>Description</label><textarea id="cash-desc" rows="2" placeholder="What was this payment for?"></textarea></div>
-        <div class="form-row"><label>Paid To</label><input id="cash-paidto" placeholder="Person / Vendor name" /></div>
-        <div class="btn-row"><button class="btn-primary" onclick="saveCashEntry()">Save Entry</button></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div class="stat-grid" style="flex:1;min-width:0">
+        <div class="stat-card"><div class="stat-label">Total Credit (IN)</div><div class="stat-value green" id="pc-total-credit">₹0</div></div>
+        <div class="stat-card"><div class="stat-label">Total Debit (OUT)</div><div class="stat-value red" id="pc-total-debit">₹0</div></div>
+        <div class="stat-card"><div class="stat-label">Balance</div><div class="stat-value blue" id="pc-balance">₹0</div></div>
+      </div>
+      <div class="btn-row" style="margin:0;gap:6px">
+        <button class="btn-primary btn-sm" onclick="openAddPettyCash()">+ Add Entry</button>
+        <button class="btn-secondary btn-sm" onclick="exportPettyCash()">📥 Excel</button>
       </div>
     </div>
-    <div class="cash-tab" id="cash-petty" style="display:none">
-      <div class="card eod-form">
-        <div class="card-title">New Petty Cash Entry (KP)</div>
-        <div class="row2">
-          <div class="form-row"><label>Date</label><input id="petty-date" type="date" value="${new Date().toISOString().split('T')[0]}" /></div>
-          <div class="form-row"><label>Project Code ⚠️</label>
-            <select id="petty-project">${getProjectCodeOptions()}</select>
-          </div>
-        </div>
-        <div class="row2">
-          <div class="form-row"><label>Category ⚠️</label>
-            <select id="petty-category"><option value="">— Select —</option>${CASH_CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select>
-          </div>
-          <div class="form-row"><label>Amount (₹)</label><input id="petty-amount" type="number" placeholder="0" /></div>
-        </div>
-        <div class="form-row"><label>Narration</label><input id="petty-narration" placeholder="Brief description..." /></div>
-        <div class="btn-row"><button class="btn-primary" onclick="savePettyCash()">Save</button></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+      <select id="pc-filter-fy" onchange="renderPettyCash()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="2026-27">FY 2026-27</option><option value="2025-26">FY 2025-26</option>
+      </select>
+      <select id="pc-filter-month" onchange="renderPettyCash()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All Months</option>
+        <option value="04">April</option><option value="05">May</option><option value="06">June</option>
+        <option value="07">July</option><option value="08">August</option><option value="09">September</option>
+        <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+        <option value="01">January</option><option value="02">February</option><option value="03">March</option>
+      </select>
+      <select id="pc-filter-type" onchange="renderPettyCash()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All Entries</option><option value="credit">Credit Only</option><option value="debit">Debit Only</option>
+      </select>
+    </div>
+    <div class="card" id="pc-table-wrap"></div>
+  </div>
+
+  <div class="acc-tab" id="acc-sales-inv" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div class="stat-grid" style="flex:1;min-width:0">
+        <div class="stat-card"><div class="stat-label">Total Invoiced</div><div class="stat-value blue" id="si-total-invoiced">₹0</div></div>
+        <div class="stat-card"><div class="stat-label">Total Received</div><div class="stat-value green" id="si-total-received">₹0</div></div>
+        <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value red" id="si-total-outstanding">₹0</div></div>
+      </div>
+      <div class="btn-row" style="margin:0;gap:6px">
+        <button class="btn-primary btn-sm" onclick="openAddSalesInvoice()">+ Add Invoice</button>
+        <button class="btn-secondary btn-sm" onclick="exportSalesInvoices()">📥 Excel</button>
       </div>
     </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+      <select id="si-filter-fy" onchange="renderSalesInvoices()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="2026-27">FY 2026-27</option><option value="2025-26">FY 2025-26</option>
+      </select>
+      <select id="si-filter-month" onchange="renderSalesInvoices()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All Months</option>
+        <option value="04">April</option><option value="05">May</option><option value="06">June</option>
+        <option value="07">July</option><option value="08">August</option><option value="09">September</option>
+        <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+        <option value="01">January</option><option value="02">February</option><option value="03">March</option>
+      </select>
+      <select id="si-filter-status" onchange="renderSalesInvoices()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
+      </select>
+    </div>
+    <div class="card" id="si-table-wrap"></div>
   </div>
 
   <div class="acc-tab" id="acc-contractor" style="display:none">
@@ -2307,7 +2340,7 @@ function savePLEdits(){
     if(!window.PROJECT_PL[site])window.PROJECT_PL[site]={billed:0,received:0,material:0,labour:0,pettyCash:0};
     window.PROJECT_PL[site][field]=parseFloat(inp.value)||0;
   });
-  saveProjectPL();closeModal();renderPL();showToast('P&L updated','success');
+  saveProjectPL();closeModal();renderPLAuto();showToast('P&L updated','success');
 }
 function exportPL(){
   const rows=SITES.filter(s=>s.status!=='upcoming').map(s=>{
@@ -2420,6 +2453,8 @@ function pagePurchase(){
   <div class="tabs">
     <div class="tab active" onclick="switchTab(this,'pur-tab','pur-requests')">Material Requests (PR)</div>
     <div class="tab" onclick="switchTab(this,'pur-tab','pur-vendors')">Vendor Database</div>
+    <div class="tab" onclick="switchTab(this,'pur-tab','pur-register')">Purchase Register</div>
+    <div class="tab" onclick="switchTab(this,'pur-tab','pur-stock')">Stock</div>
     <div class="tab" onclick="switchTab(this,'pur-tab','pur-new')">New PR</div>
     <div class="tab" onclick="switchTab(this,'pur-tab','pur-approval')">PO Approval Status</div>
   </div>
@@ -2464,6 +2499,55 @@ function pagePurchase(){
       </div>
     </div>
   </div>
+  <div class="pur-tab" id="pur-register" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div class="stat-grid" style="flex:1;min-width:0">
+        <div class="stat-card"><div class="stat-label">Total Purchase</div><div class="stat-value blue" id="pr-reg-total">₹0</div></div>
+        <div class="stat-card"><div class="stat-label">Total Paid</div><div class="stat-value green" id="pr-reg-paid">₹0</div></div>
+        <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value red" id="pr-reg-outstanding">₹0</div></div>
+      </div>
+      <div class="btn-row" style="margin:0;gap:6px">
+        <button class="btn-primary btn-sm" onclick="openAddPurchaseRegEntry()">+ Add Purchase</button>
+        <button class="btn-secondary btn-sm" onclick="exportPurchaseRegister()">📥 Excel</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+      <select id="preg-filter-fy" onchange="renderPurchaseRegister()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="2026-27">FY 2026-27</option><option value="2025-26">FY 2025-26</option>
+      </select>
+      <select id="preg-filter-month" onchange="renderPurchaseRegister()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All Months</option>
+        <option value="04">April</option><option value="05">May</option><option value="06">June</option>
+        <option value="07">July</option><option value="08">August</option><option value="09">September</option>
+        <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+        <option value="01">January</option><option value="02">February</option><option value="03">March</option>
+      </select>
+    </div>
+    <div class="card" id="preg-table-wrap"></div>
+  </div>
+
+  <div class="pur-tab" id="pur-stock" style="display:none">
+    <div class="info-box" style="margin-bottom:12px">📦 <strong>SOP:</strong> Update stock daily. Quantities below 5 are highlighted as low stock.</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id="stock-site-filter" onchange="renderStock()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+          <option value="">All Sites</option>
+          <option value="WAREHOUSE">🏭 WAREHOUSE</option>
+          ${SITES.map(s=>`<option value="${s.code}">${s.code}</option>`).join('')}
+        </select>
+        <div class="tabs" style="margin:0">
+          <div class="tab active" onclick="switchTab(this,'stock-cat-tab','stock-tools');renderStock()">Tools</div>
+          <div class="tab" onclick="switchTab(this,'stock-cat-tab','stock-consumables');renderStock()">Consumables</div>
+          <div class="tab" onclick="switchTab(this,'stock-cat-tab','stock-materials');renderStock()">Materials</div>
+        </div>
+      </div>
+      <button class="btn-primary btn-sm" onclick="openAddStockItem()">+ Add Item</button>
+    </div>
+    <div class="stock-cat-tab" id="stock-tools"><div class="card" id="stock-tools-wrap"></div></div>
+    <div class="stock-cat-tab" id="stock-consumables" style="display:none"><div class="card" id="stock-consumables-wrap"></div></div>
+    <div class="stock-cat-tab" id="stock-materials" style="display:none"><div class="card" id="stock-materials-wrap"></div></div>
+  </div>
+
   <div class="pur-tab" id="pur-approval" style="display:none">
     <div class="info-box">Purchase Order Approval workflow – Orders >₹50,000 need Owner sign-off</div>
     ${[
@@ -2611,6 +2695,515 @@ function deleteVendor(id){
   window.VENDORS=window.VENDORS.filter(v=>v.id!==id);
   saveVendors();renderVendorDB();showToast('Removed','info');
 }
+
+// ======================== PETTY CASH ENHANCED ========================
+const PETTY_CASH_DEBIT_CATS=['2nd Salary','Office Rent','Material Transport','Food / Refreshment','Advance to Worker','Office Stationery','Site Stationery','Maintenance / Repair','Tool Repair','Room Rent','Petrol / Diesel','Tool Purchase','Consumables','Stock / Material Purchase','Labour Welfare','Medical','Miscellaneous'];
+
+function fyDateRange(fy){
+  const [startY]=fy.split('-').map(Number);
+  return{start:`${startY}-04-01`,end:`${startY+1}-03-31`};
+}
+function filterByFY(entries,fyEl,monthEl,dateField){
+  const fy=(fyEl&&document.getElementById(fyEl))?document.getElementById(fyEl).value:'2026-27';
+  const month=(monthEl&&document.getElementById(monthEl))?document.getElementById(monthEl).value:'';
+  const{start,end}=fyDateRange(fy);
+  return entries.filter(e=>{
+    const d=e[dateField]||e.date||'';
+    if(d<start||d>end)return false;
+    if(month&&!d.endsWith&&typeof d==='string'){const m=d.split('-')[1];if(m!==month)return false;}
+    if(month&&typeof d==='string'){const m=d.split('-')[1];if(m!==month)return false;}
+    return true;
+  });
+}
+
+function renderPettyCash(){
+  const wrap=document.getElementById('pc-table-wrap');
+  if(!wrap)return;
+  const typeF=document.getElementById('pc-filter-type')?.value||'';
+  let entries=filterByFY(window.PETTY_CASH_ENTRIES,'pc-filter-fy','pc-filter-month','date');
+  if(typeF)entries=entries.filter(e=>e.entryType===typeF);
+  entries=entries.slice().sort((a,b)=>a.date>b.date?-1:1);
+  const totalCredit=entries.filter(e=>e.entryType==='credit').reduce((s,e)=>s+(e.amount||0),0);
+  const totalDebit=entries.filter(e=>e.entryType==='debit').reduce((s,e)=>s+(e.amount||0),0);
+  const balance=totalCredit-totalDebit;
+  const cr=document.getElementById('pc-total-credit');const db=document.getElementById('pc-total-debit');const bl=document.getElementById('pc-balance');
+  if(cr)cr.textContent=fmtINR(totalCredit);
+  if(db)db.textContent=fmtINR(totalDebit);
+  if(bl){bl.textContent=fmtINR(balance);bl.style.color=balance>=0?'var(--green)':'var(--red)';}
+  if(!entries.length){wrap.innerHTML='<div style="text-align:center;padding:32px;color:var(--text2)">No entries found. Click "+ Add Entry" to begin.</div>';return;}
+  wrap.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Type</th><th>Mode</th><th>Site/Project</th><th>Category</th><th>Amount</th><th>Narration</th><th>Paid To</th><th>By</th><th>Action</th></tr></thead>
+  <tbody>${entries.map(e=>`<tr style="${e.entryType==='credit'?'background:rgba(39,174,96,0.06)':''}">
+    <td style="white-space:nowrap">${e.date}</td>
+    <td><span class="tag tag-${e.entryType==='credit'?'green':'red'}">${e.entryType==='credit'?'Credit ↑':'Debit ↓'}</span></td>
+    <td style="font-size:11px">${e.entryType==='credit'?(e.creditMode==='bank'?'🏦 Bank':'💵 Cash'):''}</td>
+    <td><span class="tag tag-blue" style="font-size:10px">${e.siteCode||''}</span>${e.projectCode&&e.projectCode!==e.siteCode?`<br><span style="font-size:10px;color:var(--text2)">${e.projectCode}</span>`:''}</td>
+    <td style="font-size:11px">${e.debitCategory||''}</td>
+    <td style="font-weight:700;color:${e.entryType==='credit'?'var(--green)':'var(--red)'}">${fmtINR(e.amount)}</td>
+    <td style="font-size:11px;max-width:140px">${escHtml(e.narration||'')}</td>
+    <td style="font-size:11px">${escHtml(e.paidTo||'')}</td>
+    <td style="font-size:10px;color:var(--text2)">${e.addedBy||''}</td>
+    <td>
+      <button class="btn-secondary btn-xs" onclick="openEditPettyCash('${e.id}')">✏️</button>
+      <button class="btn-secondary btn-xs" style="color:var(--red)" onclick="deletePettyCashEntry('${e.id}')">🗑️</button>
+    </td>
+  </tr>`).join('')}</tbody></table></div>`;
+}
+
+function openAddPettyCash(existing){
+  const e=existing||{};
+  const siteOpts='<option value="">— Site —</option><option value="WAREHOUSE">WAREHOUSE</option>'+SITES.map(s=>`<option value="${s.code}"${e.siteCode===s.code?' selected':''}>${s.code}</option>`).join('');
+  openModal(existing?'Edit Petty Cash Entry':'Add Petty Cash Entry',`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Date</label><input id="pc-date" type="date" value="${e.date||new Date().toISOString().split('T')[0]}"/></div>
+      <div class="form-row"><label>Entry Type</label>
+        <select id="pc-type" onchange="document.getElementById('pc-credit-fields').style.display=this.value==='credit'?'block':'none';document.getElementById('pc-debit-fields').style.display=this.value==='debit'?'block':'none'">
+          <option value="debit"${(!e.entryType||e.entryType==='debit')?' selected':''}>💸 Debit (Money Out)</option>
+          <option value="credit"${e.entryType==='credit'?' selected':''}>💰 Credit (Money In)</option>
+        </select>
+      </div>
+    </div>
+    <div id="pc-credit-fields" style="display:${e.entryType==='credit'?'block':'none'}">
+      <div class="form-row"><label>Credit Mode</label>
+        <select id="pc-credit-mode">
+          <option value="cash"${e.creditMode==='cash'?' selected':''}>💵 Cash Received</option>
+          <option value="bank"${e.creditMode==='bank'?' selected':''}>🏦 Bank Transfer Received</option>
+        </select>
+      </div>
+    </div>
+    <div id="pc-debit-fields" style="display:${(!e.entryType||e.entryType==='debit')?'block':'none'}">
+      <div class="row2">
+        <div class="form-row"><label>Site Code</label><select id="pc-site">${siteOpts}</select></div>
+        <div class="form-row"><label>Project Code</label><select id="pc-proj">${getProjectCodeOptions()}</select></div>
+      </div>
+      <div class="form-row"><label>Category</label>
+        <select id="pc-debit-cat"><option value="">— Select —</option>${PETTY_CASH_DEBIT_CATS.map(c=>`<option${e.debitCategory===c?' selected':''}>${c}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Amount (₹)</label><input id="pc-amount" type="number" value="${e.amount||''}" placeholder="0"/></div>
+      <div class="form-row"><label>Paid To</label><input id="pc-paid-to" value="${e.paidTo||''}" placeholder="Person/Vendor"/></div>
+    </div>
+    <div class="form-row"><label>Narration</label><input id="pc-narration" value="${e.narration||''}" placeholder="Brief description..."/></div>
+    <div class="btn-row"><button class="btn-primary" onclick="savePettyCashEntry('${e.id||''}')">Save Entry</button></div>
+  </div>`);
+  // Set correct initial state
+  setTimeout(()=>{
+    const t=document.getElementById('pc-type');if(t)t.dispatchEvent(new Event('change'));
+  },50);
+}
+function savePettyCashEntry(existingId){
+  const date=document.getElementById('pc-date')?.value;
+  const entryType=document.getElementById('pc-type')?.value||'debit';
+  const creditMode=document.getElementById('pc-credit-mode')?.value||'cash';
+  const siteCode=document.getElementById('pc-site')?.value||'';
+  const projectCode=document.getElementById('pc-proj')?.value||'';
+  const debitCategory=document.getElementById('pc-debit-cat')?.value||'';
+  const amount=parseFloat(document.getElementById('pc-amount')?.value)||0;
+  const paidTo=document.getElementById('pc-paid-to')?.value.trim()||'';
+  const narration=document.getElementById('pc-narration')?.value.trim()||'';
+  if(!date||!amount){showToast('Date and amount are required','error');return;}
+  const userName=(window.USERS&&window.USERS[window.CU])?window.USERS[window.CU].name:window.CU||'Unknown';
+  if(existingId){
+    const idx=window.PETTY_CASH_ENTRIES.findIndex(e=>e.id===existingId);
+    if(idx>=0)window.PETTY_CASH_ENTRIES[idx]={...window.PETTY_CASH_ENTRIES[idx],date,entryType,creditMode,siteCode,projectCode,debitCategory,amount,paidTo,narration};
+  }else{
+    window.PETTY_CASH_ENTRIES.push({id:'pc'+Date.now(),date,entryType,creditMode,siteCode,projectCode,debitCategory,amount,paidTo,narration,addedBy:userName});
+  }
+  savePettyCashEntries();closeModal();renderPettyCash();showToast('Petty cash entry saved','success');
+}
+function openEditPettyCash(id){const e=window.PETTY_CASH_ENTRIES.find(x=>x.id===id);if(e)openAddPettyCash(e);}
+function deletePettyCashEntry(id){
+  if(!confirm('Delete this petty cash entry?'))return;
+  window.PETTY_CASH_ENTRIES=window.PETTY_CASH_ENTRIES.filter(e=>e.id!==id);
+  savePettyCashEntries();renderPettyCash();showToast('Deleted','info');
+}
+function exportPettyCash(){
+  const entries=window.PETTY_CASH_ENTRIES.slice().sort((a,b)=>a.date>b.date?-1:1);
+  exportToExcel(entries.map(e=>({Date:e.date,Type:e.entryType,Mode:e.creditMode||'',Site:e.siteCode,Project:e.projectCode,Category:e.debitCategory,Amount:e.amount,Narration:e.narration,PaidTo:e.paidTo,AddedBy:e.addedBy})),'1WC_PettyCash','Petty Cash');
+}
+
+// ======================== SALES INVOICES ========================
+function renderSalesInvoices(){
+  const wrap=document.getElementById('si-table-wrap');
+  if(!wrap)return;
+  let entries=filterByFY(window.SALES_INVOICES,'si-filter-fy','si-filter-month','date');
+  const statusF=document.getElementById('si-filter-status')?.value||'';
+  if(statusF)entries=entries.filter(e=>e.paymentStatus===statusF);
+  entries=entries.slice().sort((a,b)=>a.date>b.date?-1:1);
+  const totalInvoiced=entries.reduce((s,e)=>s+(e.totalValue||0),0);
+  const totalReceived=entries.filter(e=>e.paymentStatus==='paid').reduce((s,e)=>s+(e.totalValue||0),0);
+  const outstanding=totalInvoiced-totalReceived;
+  const ti=document.getElementById('si-total-invoiced');const tr=document.getElementById('si-total-received');const to=document.getElementById('si-total-outstanding');
+  if(ti)ti.textContent=fmtINR(totalInvoiced);
+  if(tr)tr.textContent=fmtINR(totalReceived);
+  if(to)to.textContent=fmtINR(outstanding);
+  if(!entries.length){wrap.innerHTML='<div style="text-align:center;padding:32px;color:var(--text2)">No sales invoices yet. Click "+ Add Invoice".</div>';return;}
+  const today=new Date().toISOString().split('T')[0];
+  wrap.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Invoice No</th><th>Date</th><th>Client</th><th>Project</th><th>Basic</th><th>GST%</th><th>GST Amt</th><th>Total</th><th>Due Date</th><th>Status</th><th>Action</th></tr></thead>
+  <tbody>${entries.map(e=>{
+    const daysLeft=e.paymentDueDate?Math.ceil((new Date(e.paymentDueDate)-new Date(today))/(1000*86400)):null;
+    const dueBadge=(e.paymentStatus==='pending'&&daysLeft!==null&&daysLeft<=3&&daysLeft>=0)?`<span style="background:var(--orange);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;margin-left:4px">⚠️ Due Soon</span>`:'';
+    const overdue=(e.paymentStatus==='pending'&&daysLeft!==null&&daysLeft<0)?`<span style="background:var(--red);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;margin-left:4px">Overdue</span>`:'';
+    return`<tr>
+      <td style="font-weight:600">${escHtml(e.invoiceNo||'')}</td>
+      <td style="white-space:nowrap">${e.date}</td>
+      <td style="font-size:12px">${escHtml(e.clientName||'')}</td>
+      <td><span class="tag tag-blue" style="font-size:10px">${e.projectCode||''}</span></td>
+      <td>${fmtINR(e.basicValue)}</td>
+      <td style="text-align:center">${e.gstPct||0}%</td>
+      <td>${fmtINR(e.gstAmt)}</td>
+      <td style="font-weight:700;color:var(--blue)">${fmtINR(e.totalValue)}</td>
+      <td style="white-space:nowrap">${e.paymentDueDate||''}${dueBadge}${overdue}</td>
+      <td><button class="btn-${e.paymentStatus==='paid'?'primary':'secondary'} btn-xs" style="${e.paymentStatus==='paid'?'background:var(--green)':''}" onclick="toggleSIStatus('${e.id}')">${e.paymentStatus==='paid'?'✓ Paid':'⏳ Pending'}</button></td>
+      <td>
+        <button class="btn-secondary btn-xs" onclick="openEditSalesInvoice('${e.id}')">✏️</button>
+        <button class="btn-secondary btn-xs" style="color:var(--red)" onclick="deleteSalesInvoice('${e.id}')">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+function openAddSalesInvoice(existing){
+  const e=existing||{};
+  const invNo='INV-'+new Date().getFullYear()+'-'+(window.SALES_INVOICES.length+1).toString().padStart(3,'0');
+  openModal(existing?'Edit Sales Invoice':'New Sales Invoice',`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Invoice No</label><input id="si-inv-no" value="${e.invoiceNo||invNo}"/></div>
+      <div class="form-row"><label>Date</label><input id="si-date" type="date" value="${e.date||new Date().toISOString().split('T')[0]}"/></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Client Name</label><input id="si-client" value="${e.clientName||''}" placeholder="Client company name"/></div>
+      <div class="form-row"><label>Project Code</label><select id="si-proj">${getProjectCodeOptions()}</select></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Basic Value (₹)</label><input id="si-basic" type="number" value="${e.basicValue||''}" oninput="calcSIGST()"/></div>
+      <div class="form-row"><label>GST %</label>
+        <select id="si-gst-pct" onchange="calcSIGST()">
+          <option value="0"${(e.gstPct||0)==0?' selected':''}>0% (Exempt)</option>
+          <option value="5"${e.gstPct==5?' selected':''}>5%</option>
+          <option value="12"${e.gstPct==12?' selected':''}>12%</option>
+          <option value="18"${e.gstPct==18?' selected':''}>18%</option>
+        </select>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>GST Amount (₹) – auto</label><input id="si-gst-amt" type="number" value="${e.gstAmt||0}" readonly style="background:var(--navy3)"/></div>
+      <div class="form-row"><label>Total Value (₹) – auto</label><input id="si-total" type="number" value="${e.totalValue||0}" readonly style="background:var(--navy3)"/></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Payment Due Date</label><input id="si-due" type="date" value="${e.paymentDueDate||''}"/></div>
+      <div class="form-row"><label>Payment Status</label>
+        <select id="si-status">
+          <option value="pending"${(e.paymentStatus||'pending')==='pending'?' selected':''}>⏳ Pending</option>
+          <option value="paid"${e.paymentStatus==='paid'?' selected':''}>✅ Paid</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row"><label>Notes</label><textarea id="si-notes" rows="2">${e.notes||''}</textarea></div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveSalesInvoice('${e.id||''}')">Save Invoice</button></div>
+  </div>`);
+  // pre-select project code
+  setTimeout(()=>{const s=document.getElementById('si-proj');if(s&&e.projectCode)s.value=e.projectCode;},50);
+}
+function calcSIGST(){
+  const basic=parseFloat(document.getElementById('si-basic')?.value)||0;
+  const pct=parseFloat(document.getElementById('si-gst-pct')?.value)||0;
+  const gst=Math.round(basic*pct/100);
+  const total=basic+gst;
+  const ga=document.getElementById('si-gst-amt');const tv=document.getElementById('si-total');
+  if(ga)ga.value=gst;if(tv)tv.value=total;
+}
+function saveSalesInvoice(existingId){
+  const invoiceNo=document.getElementById('si-inv-no')?.value.trim();
+  const date=document.getElementById('si-date')?.value;
+  const clientName=document.getElementById('si-client')?.value.trim();
+  const projectCode=document.getElementById('si-proj')?.value;
+  const basicValue=parseFloat(document.getElementById('si-basic')?.value)||0;
+  const gstPct=parseFloat(document.getElementById('si-gst-pct')?.value)||0;
+  const gstAmt=Math.round(basicValue*gstPct/100);
+  const totalValue=basicValue+gstAmt;
+  const paymentDueDate=document.getElementById('si-due')?.value||'';
+  const paymentStatus=document.getElementById('si-status')?.value||'pending';
+  const notes=document.getElementById('si-notes')?.value.trim()||'';
+  if(!invoiceNo||!date||!clientName){showToast('Invoice No, Date, and Client are required','error');return;}
+  if(existingId){
+    const idx=window.SALES_INVOICES.findIndex(e=>e.id===existingId);
+    if(idx>=0)window.SALES_INVOICES[idx]={...window.SALES_INVOICES[idx],invoiceNo,date,clientName,projectCode,basicValue,gstPct,gstAmt,totalValue,paymentDueDate,paymentStatus,notes};
+  }else{
+    window.SALES_INVOICES.push({id:'si'+Date.now(),invoiceNo,date,clientName,projectCode,basicValue,gstPct,gstAmt,totalValue,paymentDueDate,paymentStatus,notes});
+  }
+  saveSalesInvoices();closeModal();renderSalesInvoices();showToast('Invoice saved','success');
+}
+function toggleSIStatus(id){
+  const e=window.SALES_INVOICES.find(x=>x.id===id);
+  if(!e)return;
+  e.paymentStatus=e.paymentStatus==='paid'?'pending':'paid';
+  if(e.paymentStatus==='paid')e.paidDate=new Date().toISOString().split('T')[0];
+  saveSalesInvoices();renderSalesInvoices();showToast('Status updated','success');
+}
+function openEditSalesInvoice(id){const e=window.SALES_INVOICES.find(x=>x.id===id);if(e)openAddSalesInvoice(e);}
+function deleteSalesInvoice(id){
+  if(!confirm('Delete this invoice?'))return;
+  window.SALES_INVOICES=window.SALES_INVOICES.filter(e=>e.id!==id);
+  saveSalesInvoices();renderSalesInvoices();showToast('Deleted','info');
+}
+function exportSalesInvoices(){
+  exportToExcel(window.SALES_INVOICES.map(e=>({InvoiceNo:e.invoiceNo,Date:e.date,Client:e.clientName,Project:e.projectCode,BasicValue:e.basicValue,GSTPct:e.gstPct,GSTAmt:e.gstAmt,TotalValue:e.totalValue,DueDate:e.paymentDueDate,Status:e.paymentStatus,Notes:e.notes})),'1WC_SalesInvoices','Sales Invoices');
+}
+
+// ======================== PURCHASE REGISTER ========================
+function renderPurchaseRegister(){
+  const wrap=document.getElementById('preg-table-wrap');
+  if(!wrap)return;
+  let entries=filterByFY(window.PURCHASE_REGISTER,'preg-filter-fy','preg-filter-month','date');
+  entries=entries.slice().sort((a,b)=>a.date>b.date?-1:1);
+  const totalVal=entries.reduce((s,e)=>s+(e.totalValue||0),0);
+  const totalPaid=entries.reduce((s,e)=>s+(e.paidAmt||0),0);
+  const outstanding=totalVal-totalPaid;
+  const t=document.getElementById('pr-reg-total');const p=document.getElementById('pr-reg-paid');const o=document.getElementById('pr-reg-outstanding');
+  if(t)t.textContent=fmtINR(totalVal);if(p)p.textContent=fmtINR(totalPaid);if(o)o.textContent=fmtINR(outstanding);
+  if(!entries.length){wrap.innerHTML='<div style="text-align:center;padding:32px;color:var(--text2)">No purchase entries yet.</div>';return;}
+  wrap.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Vendor</th><th>Project</th><th>Description</th><th>Basic</th><th>GST%</th><th>GST</th><th>Total</th><th>Terms</th><th>Due</th><th>Paid</th><th>Status</th><th>Action</th></tr></thead>
+  <tbody>${entries.map(e=>`<tr>
+    <td style="white-space:nowrap">${e.date}</td>
+    <td style="font-size:12px;font-weight:600">${escHtml(e.vendorName||'')}</td>
+    <td><span class="tag tag-blue" style="font-size:10px">${e.projectCode||''}</span></td>
+    <td style="font-size:11px;max-width:130px">${escHtml(e.description||'')}</td>
+    <td>${fmtINR(e.basicValue)}</td>
+    <td style="text-align:center">${e.gstPct||0}%</td>
+    <td>${fmtINR(e.gstAmt)}</td>
+    <td style="font-weight:700;color:var(--blue)">${fmtINR(e.totalValue)}</td>
+    <td style="font-size:10px">${(e.paymentTerms||'').replace(/_/g,' ')}</td>
+    <td style="font-size:11px;white-space:nowrap">${e.paymentDueDate||e.pdcDate||''}</td>
+    <td>${fmtINR(e.paidAmt)}</td>
+    <td><span class="tag tag-${e.paymentStatus==='paid'?'green':e.paymentStatus==='partial'?'orange':'red'}">${e.paymentStatus||'pending'}</span></td>
+    <td>
+      <button class="btn-secondary btn-xs" onclick="openEditPurchaseReg('${e.id}')">✏️</button>
+      <button class="btn-secondary btn-xs" style="color:var(--red)" onclick="deletePurchaseReg('${e.id}')">🗑️</button>
+    </td>
+  </tr>`).join('')}</tbody></table></div>`;
+}
+function openAddPurchaseRegEntry(existing){
+  const e=existing||{};
+  const ptOpts=[
+    {v:'100_advance',l:'100% Advance'},
+    {v:'50_50',l:'50% Advance + 50% on Delivery'},
+    {v:'20_80',l:'20% Advance + 80% on Delivery'},
+    {v:'pdc',l:'PDC (Post Dated Cheque)'},
+    {v:'due_date',l:'Credit – Due Date'}
+  ];
+  openModal(existing?'Edit Purchase Entry':'New Purchase Entry',`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Date</label><input id="preg-date" type="date" value="${e.date||new Date().toISOString().split('T')[0]}"/></div>
+      <div class="form-row"><label>Vendor Name</label><input id="preg-vendor" value="${e.vendorName||''}" placeholder="Vendor/Supplier"/></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Project Code</label><select id="preg-proj">${getProjectCodeOptions()}</select></div>
+      <div class="form-row"><label>Description</label><input id="preg-desc" value="${e.description||''}" placeholder="Item/service description"/></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Basic Value (₹)</label><input id="preg-basic" type="number" value="${e.basicValue||''}" oninput="calcPRegGST()"/></div>
+      <div class="form-row"><label>GST %</label>
+        <select id="preg-gst-pct" onchange="calcPRegGST()">
+          <option value="0">0%</option><option value="5"${e.gstPct==5?' selected':''}>5%</option>
+          <option value="12"${e.gstPct==12?' selected':''}>12%</option><option value="18"${e.gstPct==18?' selected':''}>18%</option>
+        </select>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>GST Amt (auto)</label><input id="preg-gst-amt" type="number" value="${e.gstAmt||0}" readonly style="background:var(--navy3)"/></div>
+      <div class="form-row"><label>Total Value (auto)</label><input id="preg-total" type="number" value="${e.totalValue||0}" readonly style="background:var(--navy3)"/></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Payment Terms</label>
+        <select id="preg-terms" onchange="document.getElementById('preg-pdc-row').style.display=this.value==='pdc'?'block':'none'">
+          ${ptOpts.map(pt=>`<option value="${pt.v}"${e.paymentTerms===pt.v?' selected':''}>${pt.l}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-row"><label>Due / PDC Date</label><input id="preg-due" type="date" value="${e.paymentDueDate||e.pdcDate||''}"/></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Amount Paid (₹)</label><input id="preg-paid" type="number" value="${e.paidAmt||0}"/></div>
+      <div class="form-row"><label>Payment Status</label>
+        <select id="preg-status">
+          <option value="pending"${(e.paymentStatus||'pending')==='pending'?' selected':''}>⏳ Pending</option>
+          <option value="partial"${e.paymentStatus==='partial'?' selected':''}>⚡ Partial</option>
+          <option value="paid"${e.paymentStatus==='paid'?' selected':''}>✅ Paid</option>
+        </select>
+      </div>
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="savePurchaseRegEntry('${e.id||''}')">Save</button></div>
+  </div>`);
+  setTimeout(()=>{const s=document.getElementById('preg-proj');if(s&&e.projectCode)s.value=e.projectCode;},50);
+}
+function calcPRegGST(){
+  const basic=parseFloat(document.getElementById('preg-basic')?.value)||0;
+  const pct=parseFloat(document.getElementById('preg-gst-pct')?.value)||0;
+  const gst=Math.round(basic*pct/100);
+  const ga=document.getElementById('preg-gst-amt');const tv=document.getElementById('preg-total');
+  if(ga)ga.value=gst;if(tv)tv.value=basic+gst;
+}
+function savePurchaseRegEntry(existingId){
+  const date=document.getElementById('preg-date')?.value;
+  const vendorName=document.getElementById('preg-vendor')?.value.trim();
+  const projectCode=document.getElementById('preg-proj')?.value;
+  const description=document.getElementById('preg-desc')?.value.trim();
+  const basicValue=parseFloat(document.getElementById('preg-basic')?.value)||0;
+  const gstPct=parseFloat(document.getElementById('preg-gst-pct')?.value)||0;
+  const gstAmt=Math.round(basicValue*gstPct/100);
+  const totalValue=basicValue+gstAmt;
+  const paymentTerms=document.getElementById('preg-terms')?.value||'due_date';
+  const paymentDueDate=document.getElementById('preg-due')?.value||'';
+  const paidAmt=parseFloat(document.getElementById('preg-paid')?.value)||0;
+  const paymentStatus=document.getElementById('preg-status')?.value||'pending';
+  if(!date||!vendorName){showToast('Date and vendor name required','error');return;}
+  if(existingId){
+    const idx=window.PURCHASE_REGISTER.findIndex(e=>e.id===existingId);
+    if(idx>=0)window.PURCHASE_REGISTER[idx]={...window.PURCHASE_REGISTER[idx],date,vendorName,projectCode,description,basicValue,gstPct,gstAmt,totalValue,paymentTerms,paymentDueDate,paidAmt,paymentStatus};
+  }else{
+    window.PURCHASE_REGISTER.push({id:'pr'+Date.now(),date,vendorName,projectCode,description,basicValue,gstPct,gstAmt,totalValue,paymentTerms,paymentDueDate,paidAmt,paymentStatus});
+  }
+  savePurchaseRegister();closeModal();renderPurchaseRegister();showToast('Purchase entry saved','success');
+}
+function openEditPurchaseReg(id){const e=window.PURCHASE_REGISTER.find(x=>x.id===id);if(e)openAddPurchaseRegEntry(e);}
+function deletePurchaseReg(id){
+  if(!confirm('Delete this purchase entry?'))return;
+  window.PURCHASE_REGISTER=window.PURCHASE_REGISTER.filter(e=>e.id!==id);
+  savePurchaseRegister();renderPurchaseRegister();showToast('Deleted','info');
+}
+function exportPurchaseRegister(){
+  exportToExcel(window.PURCHASE_REGISTER.map(e=>({Date:e.date,Vendor:e.vendorName,Project:e.projectCode,Description:e.description,Basic:e.basicValue,GSTPct:e.gstPct,GSTAmt:e.gstAmt,Total:e.totalValue,Terms:e.paymentTerms,DueDate:e.paymentDueDate,PaidAmt:e.paidAmt,Status:e.paymentStatus})),'1WC_PurchaseRegister','Purchase Register');
+}
+
+// ======================== STOCK MANAGEMENT ========================
+function renderStock(){
+  const siteF=document.getElementById('stock-site-filter')?.value||'';
+  const activeTab=document.querySelector('.stock-cat-tab:not([style*="none"])')?.id?.replace('stock-','').replace('-wrap','');
+  // determine active category from visible tab
+  const cats=['tools','consumables','materials'];
+  cats.forEach(cat=>{
+    const wrap=document.getElementById('stock-'+cat+'-wrap');
+    if(!wrap)return;
+    let items=window.STOCK_ITEMS.filter(i=>i.category===cat);
+    if(siteF)items=items.filter(i=>i.siteCode===siteF);
+    if(!items.length){wrap.innerHTML='<div style="text-align:center;padding:24px;color:var(--text2)">No '+cat+' in stock. Click "+ Add Item".</div>';return;}
+    wrap.innerHTML=`<table><thead><tr><th>Item Name</th><th>Site</th><th>Unit</th><th>Qty</th><th>Last Updated</th><th>Notes</th><th>Action</th></tr></thead>
+    <tbody>${items.map(i=>`<tr style="${(i.quantity||0)<5?'background:rgba(231,76,60,0.08)':''}">
+      <td style="font-weight:600">${escHtml(i.itemName||'')}${(i.quantity||0)<5?'<span style="background:var(--red);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;margin-left:6px">LOW</span>':''}</td>
+      <td><span class="tag tag-blue" style="font-size:10px">${i.siteCode||''}</span></td>
+      <td>${i.unit||''}</td>
+      <td style="font-weight:700;color:${(i.quantity||0)<5?'var(--red)':'var(--green)'}">${i.quantity||0}</td>
+      <td style="font-size:11px">${i.lastUpdated||''}</td>
+      <td style="font-size:11px;max-width:120px">${escHtml(i.notes||'')}</td>
+      <td>
+        <button class="btn-secondary btn-xs" onclick="openEditStockItem('${i.id}')">✏️</button>
+        <button class="btn-secondary btn-xs" style="color:var(--red)" onclick="deleteStockItem('${i.id}')">🗑️</button>
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+  });
+}
+function openAddStockItem(existing){
+  const e=existing||{};
+  const siteOpts='<option value="WAREHOUSE"${e.siteCode===\'WAREHOUSE\'?\' selected\':\'\'}>🏭 WAREHOUSE</option>'+SITES.map(s=>`<option value="${s.code}"${e.siteCode===s.code?' selected':''}>${s.code} – ${s.name}</option>`).join('');
+  openModal(existing?'Edit Stock Item':'Add Stock Item',`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Item Name</label><input id="stk-name" value="${e.itemName||''}" placeholder="Item description"/></div>
+      <div class="form-row"><label>Category</label>
+        <select id="stk-cat">
+          <option value="tools"${e.category==='tools'?' selected':''}>🔧 Tools</option>
+          <option value="consumables"${e.category==='consumables'?' selected':''}>📦 Consumables</option>
+          <option value="materials"${e.category==='materials'?' selected':''}>🏗️ Materials</option>
+        </select>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Site / Location</label>
+        <select id="stk-site"><option value="WAREHOUSE">🏭 WAREHOUSE</option>${SITES.map(s=>`<option value="${s.code}"${e.siteCode===s.code?' selected':''}>${s.code}</option>`).join('')}</select>
+      </div>
+      <div class="form-row"><label>Unit</label><input id="stk-unit" value="${e.unit||''}" placeholder="Nos / Kg / Sqm / Rft..."/></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Quantity</label><input id="stk-qty" type="number" value="${e.quantity||0}"/></div>
+      <div class="form-row"><label>Notes</label><input id="stk-notes" value="${e.notes||''}" placeholder="Brand, specs, condition..."/></div>
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveStockItem('${e.id||''}')">Save</button></div>
+  </div>`);
+}
+function saveStockItem(existingId){
+  const itemName=document.getElementById('stk-name')?.value.trim();
+  const category=document.getElementById('stk-cat')?.value||'tools';
+  const siteCode=document.getElementById('stk-site')?.value||'WAREHOUSE';
+  const unit=document.getElementById('stk-unit')?.value.trim()||'Nos';
+  const quantity=parseFloat(document.getElementById('stk-qty')?.value)||0;
+  const notes=document.getElementById('stk-notes')?.value.trim()||'';
+  if(!itemName){showToast('Enter item name','error');return;}
+  const updatedBy=(window.USERS&&window.USERS[window.CU])?window.USERS[window.CU].name:window.CU||'Unknown';
+  const lastUpdated=new Date().toISOString().split('T')[0];
+  if(existingId){
+    const idx=window.STOCK_ITEMS.findIndex(e=>e.id===existingId);
+    if(idx>=0)window.STOCK_ITEMS[idx]={...window.STOCK_ITEMS[idx],itemName,category,siteCode,unit,quantity,notes,lastUpdated,updatedBy};
+  }else{
+    window.STOCK_ITEMS.push({id:'stk'+Date.now(),itemName,category,siteCode,unit,quantity,notes,lastUpdated,updatedBy});
+  }
+  saveStockItems();closeModal();renderStock();showToast('Stock item saved','success');
+}
+function openEditStockItem(id){const e=window.STOCK_ITEMS.find(x=>x.id===id);if(e)openAddStockItem(e);}
+function deleteStockItem(id){
+  if(!confirm('Delete this stock item?'))return;
+  window.STOCK_ITEMS=window.STOCK_ITEMS.filter(e=>e.id!==id);
+  saveStockItems();renderStock();showToast('Deleted','info');
+}
+
+// ======================== ENHANCED PROJECT P&L (AUTO-AGGREGATE) ========================
+function renderPLAuto(){
+  const wrap=document.getElementById('pl-table-wrap');
+  if(!wrap)return;
+  const sites=SITES.filter(s=>s.status!=='upcoming');
+  const rows=sites.map(s=>{
+    const code=s.code;
+    // Revenue from Sales Invoices
+    const revenue=(window.SALES_INVOICES||[]).filter(i=>i.projectCode===code).reduce((sum,i)=>sum+(i.totalValue||0),0);
+    const received=(window.SALES_INVOICES||[]).filter(i=>i.projectCode===code&&i.paymentStatus==='paid').reduce((sum,i)=>sum+(i.totalValue||0),0);
+    // Purchase cost
+    const purchaseCost=(window.PURCHASE_REGISTER||[]).filter(p=>p.projectCode===code).reduce((sum,p)=>sum+(p.totalValue||0),0);
+    // Petty cash debit
+    const pettyCash=(window.PETTY_CASH_ENTRIES||[]).filter(p=>p.projectCode===code&&p.entryType==='debit').reduce((sum,p)=>sum+(p.amount||0),0);
+    // Contractor cost (advances+salary+PF from legacy contractors; also from petty cash entries with Advance/Salary category)
+    const contractorCost=(window.CONTRACTORS||[]).filter(c=>c.projectCode===code||c.siteCode===code||c.site===code).reduce((sum,c)=>sum+(c.advance||0)+(c.formalSalary||c.salary||0),0);
+    // Manual P&L fallback data
+    const d=window.PROJECT_PL[code]||{};
+    const revFinal=revenue||(d.billed||0);
+    const receivedFinal=received||(d.received||0);
+    const pcFinal=purchaseCost||(d.material||0);
+    const labFinal=contractorCost||(d.labour||0);
+    const pcashFinal=pettyCash||(d.pettyCash||0);
+    const totalCost=pcFinal+labFinal+pcashFinal;
+    const margin=revFinal-totalCost;
+    const marginPct=revFinal>0?((margin/revFinal)*100):0;
+    let healthLabel,healthColor;
+    if(marginPct>=20){healthLabel='Excellent';healthColor='#1a7a4a';}
+    else if(marginPct>=15){healthLabel='Good';healthColor='var(--green)';}
+    else if(marginPct>=12){healthLabel='Fair';healthColor='var(--green)';}
+    else if(marginPct>=10){healthLabel='OK';healthColor='var(--orange)';}
+    else if(marginPct>=7){healthLabel='Borderline';healthColor='var(--orange)';}
+    else{healthLabel='Blunder';healthColor='var(--red)';}
+    const dot=marginPct>=15?'🟢':marginPct>=10?'🟡':marginPct>=7?'🟠':'🔴';
+    return`<tr>
+      <td><div style="font-weight:600">${s.name}</div><div style="font-size:10px;color:var(--orange)">${code}</div></td>
+      <td style="color:var(--blue)">${fmtINR(revFinal)}</td>
+      <td style="color:var(--green)">${fmtINR(receivedFinal)}</td>
+      <td style="color:var(--text2)">${fmtINR(pcFinal)}</td>
+      <td style="color:var(--text2)">${fmtINR(labFinal)}</td>
+      <td style="color:var(--text2)">${fmtINR(pcashFinal)}</td>
+      <td style="color:${margin>=0?'var(--green)':'var(--red)'};font-weight:700">${fmtINR(margin)}</td>
+      <td style="text-align:center;font-weight:700">
+        <span style="color:${healthColor}">${dot} ${marginPct.toFixed(1)}%</span><br>
+        <span style="font-size:10px;color:${healthColor}">${healthLabel}</span>
+      </td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML=`<table><thead><tr><th>Site</th><th>Revenue</th><th>Received</th><th>Purchase</th><th>Labour</th><th>Petty Cash</th><th>Margin</th><th>Health</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
 function pageVendorCompare(){
   const vc = window.VC_LIST&&window.VC_LIST.length?window.VC_LIST[0]:{item:'12000 CFM AHU (Daikin/Blue Star)',quotes:[
     {vendor:'Greenfield HVAC',technical:{make:'Daikin VRV',cop:3.8,warranty:'2yr',delivery:'4 wk'},commercial:{price:4850000,gst:18,terms:'30% advance',validity:'30 days'},rating:4.2},
