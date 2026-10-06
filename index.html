@@ -83,6 +83,28 @@
       } catch(e) { console.error('EOD load failed', e); return []; }
     };
 
+    window.fbUpdateEOD = async function(docId, data) {
+      try {
+        await db.collection('eod_reports').doc(docId).update({
+          ...data,
+          editedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          editedBy: window.CU || 'unknown'
+        });
+        return true;
+      } catch(e) { console.error('EOD update failed', e); return false; }
+    };
+
+    window.fbLoadMyEODs = async function(userKey) {
+      try {
+        const snap = await db.collection('eod_reports')
+          .where('user','==',userKey)
+          .orderBy('timestamp','desc')
+          .limit(30)
+          .get();
+        return snap.docs.map(d=>({id:d.id,...d.data()}));
+      } catch(e) { console.error('My EOD load failed', e); return []; }
+    };
+
     window.fbLoadSiteUpdates = async function() {
       try {
         const snap = await db.collection('site_updates').orderBy('timestamp','desc').get();
@@ -825,6 +847,7 @@ const NAV={
     {id:'ai-feedback',icon:'🤖',label:'AI Suggestions'},
     {id:'tasks',icon:'✅',label:'My Tasks (SOP)'},
     {id:'eod',icon:'📝',label:'EOD Report'},
+    {id:'my-eod',icon:'📋',label:'My Past Reports'},
   ],
   kuldeep:[
     {section:'My Work'},
@@ -837,6 +860,8 @@ const NAV={
     {id:'ra-billing',icon:'🧾',label:'RA Billing'},
     {id:'ai-feedback',icon:'🤖',label:'AI Tips'},
     {id:'eod',icon:'📝',label:'EOD Report'},
+    {id:'my-eod',icon:'📋',label:'My Past Reports'},
+    {id:'team-eod',icon:'👥',label:'Team EOD (All)'},
   ],
   priyanshu:[
     {section:'My Work'},
@@ -848,6 +873,8 @@ const NAV={
     {id:'rfq',icon:'📨',label:'RFQ Generator'},
     {id:'ai-feedback',icon:'🤖',label:'AI Tips'},
     {id:'eod',icon:'📝',label:'EOD Report'},
+    {id:'my-eod',icon:'📋',label:'My Past Reports'},
+    {id:'team-eod',icon:'👥',label:'Team EOD (All)'},
   ],
   vinay:[
     {section:'My Work'},
@@ -858,6 +885,8 @@ const NAV={
     {id:'quotation',icon:'📋',label:'Quotation Generator'},
     {id:'ai-feedback',icon:'🤖',label:'AI Tips'},
     {id:'eod',icon:'📝',label:'EOD Report'},
+    {id:'my-eod',icon:'📋',label:'My Past Reports'},
+    {id:'team-eod',icon:'👥',label:'Team EOD (All)'},
   ],
   amit:[
     {section:'Mera Kaam'},
@@ -869,6 +898,8 @@ const NAV={
     {id:'attendance',icon:'📅',label:'Attendance'},
     {id:'ai-feedback',icon:'🤖',label:'AI Tips'},
     {id:'eod',icon:'📝',label:'EOD Update'},
+    {id:'my-eod',icon:'📋',label:'Mere EOD Reports'},
+    {id:'team-eod',icon:'👥',label:'Team EOD (All)'},
   ],
   default_office:[
     {section:'My Work'},
@@ -879,6 +910,8 @@ const NAV={
     {id:'attendance',icon:'📅',label:'Attendance'},
     {id:'ai-feedback',icon:'🤖',label:'AI Tips'},
     {id:'eod',icon:'📝',label:'EOD Report'},
+    {id:'my-eod',icon:'📋',label:'My Past Reports'},
+    {id:'team-eod',icon:'👥',label:'Team EOD (All)'},
   ],
   default_field:[
     {section:'Mera Kaam'},
@@ -888,6 +921,8 @@ const NAV={
     {id:'attendance',icon:'📅',label:'Attendance'},
     {id:'ai-feedback',icon:'🤖',label:'AI Tips'},
     {id:'eod',icon:'📝',label:'EOD Update'},
+    {id:'my-eod',icon:'📋',label:'Mere EOD Reports'},
+    {id:'team-eod',icon:'👥',label:'Team EOD (All)'},
   ],
 };
 
@@ -981,7 +1016,7 @@ function showPage(id){
   window.c=document.getElementById('page-content');
   sidebarOpen=false;
   document.getElementById('sidebar').classList.remove('open');
-  const titles={dashboard:'Dashboard',tasks:USERS[CU]?.hinglish?'Aaj Ka Kaam':'My Tasks (SOP)',eod:'EOD Report',sites:'Site Updates',sales:'Sales Pipeline',accounts:'Accounts',purchase:'Purchase','team-status':'Team Overview',alerts:'Alerts & Reports','eod-owner':'📋 EOD Reports — Full Team',delegate:'Delegate Tasks','vendor-compare':'Vendor Comparison',rfq:'RFQ Generator','project-costing':'Project Costing','ai-feedback':'AI Suggestions & Feedback',execution:'Execution Timeline',attendance:'Attendance','ra-billing':'RA Billing',quotation:'Quotation Generator',planning:'Planning','project-manager':'🏗️ Project / Site Manager'};
+  const titles={dashboard:'Dashboard',tasks:USERS[CU]?.hinglish?'Aaj Ka Kaam':'My Tasks (SOP)',eod:'EOD Report','my-eod':'📋 My EOD Reports','team-eod':'👥 Team EOD — All Members',sites:'Site Updates',sales:'Sales Pipeline',accounts:'Accounts',purchase:'Purchase','team-status':'Team Overview',alerts:'Alerts & Reports','eod-owner':'📋 EOD Reports — Full Team',delegate:'Delegate Tasks','vendor-compare':'Vendor Comparison',rfq:'RFQ Generator','project-costing':'Project Costing','ai-feedback':'AI Suggestions & Feedback',execution:'Execution Timeline',attendance:'Attendance','ra-billing':'RA Billing',quotation:'Quotation Generator',planning:'Planning','project-manager':'🏗️ Project / Site Manager'};
   document.getElementById('page-title').textContent=titles[id]||id;
   const content=document.getElementById('page-content');
   // Clear first so pages using c.innerHTML directly render fresh
@@ -1008,6 +1043,8 @@ function showPage(id){
     case 'ra-billing': pageRABilling();break;
     case 'quotation': pageQuotation();break;
     case 'planning': pagePlanning();break;
+    case 'my-eod': pageMyEODs().catch(e=>{c.innerHTML='<div class="card"><p style="color:var(--red)">Failed to load. Check connection.</p></div>';console.error(e);});break;
+    case 'team-eod': pageTeamEODs().catch(e=>{c.innerHTML='<div class="card"><p style="color:var(--red)">Failed to load. Check connection.</p></div>';console.error(e);});break;
     default: content.innerHTML='<div class="card"><p style="color:var(--text2)">Coming soon…</p></div>';
   }
 }
@@ -2797,42 +2834,42 @@ function getCell(eAtt,d){
 }
 // ── Wage calculation per worker type ──────────────────────────────
 // workerType: 'labour' | 'employee'
-// LABOUR: monthly/26 per day. Sunday = W (unpaid) unless marked P.
-// EMPLOYEE: monthly/daysInMonth per day. Sunday = W but PAID. 1.5 paid leaves/month.
-// For both: A = no pay. P = full day pay. OT = (daily_rate/8)*OT_hours
+// LABOUR:   monthly÷26 per day. P=paid. A=no pay. W/WO=unpaid off. Sunday auto=WO unpaid.
+// EMPLOYEE: monthly÷daysInMonth per day. P=paid. A=no pay. W/WO=paid off. H=paid. Sundays=paid WO.
+// For both: OT = (dailyRate÷8) × OT_hours  (only on days where status is P or H+work)
+// Empty cell on a Sunday → treated as WO automatically
 function calcWages(emp, attData, monthStr){
   const numDays=getDaysInMonth(monthStr);
   const [yr,mo]=monthStr.split('-').map(Number);
   const wt=emp.workerType||'labour';
-  const dailyRate=wt==='labour'?(emp.wage/26):(emp.wage/numDays);
+  const wage=parseFloat(emp.wage)||0;
+  const dailyRate=wt==='labour'?(wage/26):(wage/numDays);
   let totalPay=0, pCount=0, aCount=0, wCount=0, otTotal=0;
   for(let d=1;d<=numDays;d++){
     const cell=getCell(attData,d);
     const dow=new Date(yr,mo-1,d).getDay(); // 0=Sun
     const isSunday=dow===0;
-    const status=cell.s;
-    const ot=cell.ot||0;
+    // Resolve effective status: blank on sunday = WO; blank weekday = not yet marked (skip pay)
+    let status=cell.s;
+    if(status===''&&isSunday) status='W'; // auto WO for unmarked Sundays
+    const ot=parseFloat(cell.ot)||0;
     otTotal+=ot;
     if(status==='P'){
       pCount++;
-      totalPay+=dailyRate;
-      totalPay+=(dailyRate/8)*ot;
+      totalPay+=dailyRate+(dailyRate/8)*ot;
     } else if(status==='A'){
       aCount++;
-      // no pay
-    } else if(status==='W'||status===''){
-      // Week Off
+      // No pay for absent — any OT on absent day ignored
+    } else if(status==='W'||status==='WO'){
       wCount++;
-      if(wt==='employee'&&isSunday){
-        // Employee Sunday = paid week off
-        totalPay+=dailyRate;
-      }
-      // Labour Sunday = unpaid unless they marked P (already handled above)
-    } else if(status==='H'){
-      // Holiday = paid for employee, unpaid for labour unless they work OT
+      // Employee: WO/Sunday = paid day off
       if(wt==='employee') totalPay+=dailyRate;
-      totalPay+=(dailyRate/8)*ot;
+      // Labour: WO = unpaid (dailyRate÷26 model doesn't pay for W)
+    } else if(status==='H'){
+      // Holiday — both types get paid; OT if they worked on holiday
+      totalPay+=dailyRate+(dailyRate/8)*ot;
     }
+    // status==='' on a weekday = not yet filled in; no pay either way (safe default)
   }
   return{totalPay,pCount,aCount,wCount,otTotal,dailyRate};
 }
@@ -2876,7 +2913,7 @@ function renderAttGrid(){
         +'<option value="" '+(cell.s===''?'selected':'')+'>—</option>'
         +'<option value="P" '+(cell.s==='P'?'selected':'')+'>P</option>'
         +'<option value="A" '+(cell.s==='A'?'selected':'')+'>A</option>'
-        +'<option value="W" '+(cell.s==='W'?'selected':'')+'>W</option>'
+        +'<option value="W" '+((cell.s==='W'||cell.s==='WO')?'selected':'')+'>WO</option>'
         +'<option value="H" '+(cell.s==='H'?'selected':'')+'>H</option>'
         +'</select>'
         +'</td>'
@@ -2924,10 +2961,11 @@ function attStatusChange(sel){
   const prev=getCell(data[empId],day);
   data[empId][day]={s:val,ot:prev.ot||0};
   saveAttData(data);
-  const scMap={P:'var(--green)',A:'var(--red)',W:'#777',H:'var(--blue)'};
+  const scMap={P:'var(--green)',A:'var(--red)',W:'#888',WO:'#888',H:'var(--blue)'};
   sel.style.background=(val?(scMap[val]||'var(--bg2)')+'22':'var(--bg2)');
   sel.style.color=val?(scMap[val]||'var(--text)'):'var(--text2)';
   _updateAttRow(empId);
+  updateAttWagesSummary();
 }
 function attOTChange(inp){
   const empId=inp.dataset.emp;
@@ -2940,6 +2978,7 @@ function attOTChange(inp){
   saveAttData(data);
   inp.style.color=ot>0?'var(--orange)':'var(--text2)';
   _updateAttRow(empId);
+  updateAttWagesSummary();
 }
 function _updateAttRow(empId){
   const row=document.querySelector('tr[data-emp-row="'+empId+'"]');
@@ -4014,6 +4053,213 @@ function filterEODs(){
         </div>`;
       }).join('')}
     </div>`).join('');
+}
+
+// ===================== MY EOD REPORTS (per-user view + edit) =====================
+async function pageMyEODs(){
+  c.innerHTML='<div class="card" style="text-align:center;padding:32px;color:var(--text2)">⏳ Loading your reports...</div>';
+  if(!window.fbLoadMyEODs){
+    c.innerHTML='<div class="card" style="text-align:center;padding:32px;color:var(--red)">⚠️ Firebase not connected. Please refresh the page.</div>';
+    return;
+  }
+  const reports=await window.fbLoadMyEODs(CU);
+  window._myEODs=reports;
+  _renderMyEODs();
+}
+
+function _renderMyEODs(){
+  const reports=window._myEODs||[];
+  const u=USERS[CU];
+  let html='<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">'
+    +'<button class="btn-primary btn-sm" onclick="pageMyEODs()">🔄 Refresh</button>'
+    +'<button class="btn-secondary btn-sm" onclick="showPage(\'eod\')">📝 New EOD Report</button>'
+    +'<span style="font-size:12px;color:var(--text2)">'+reports.length+' report'+(reports.length!==1?'s':'')+'</span>'
+    +'</div>';
+  if(!reports.length){
+    c.innerHTML=html+'<div class="card" style="text-align:center;padding:40px"><div style="font-size:40px;margin-bottom:12px">📭</div>'
+      +'<div style="color:var(--text2)">No EOD reports submitted yet.<br>Submit your first from the EOD Report page.</div>'
+      +'<button class="btn-primary" style="margin-top:16px" onclick="showPage(\'eod\')">📝 Submit EOD</button></div>';
+    c.innerHTML=html+c.innerHTML;return;
+  }
+  const moodEmoji={great:'😄',good:'😊',okay:'😐',tough:'😔','':'—'};
+  const moodColor={great:'var(--green)',good:'var(--blue)',okay:'var(--gold)',tough:'var(--red)','':'var(--text2)'};
+  html+=reports.map((r,idx)=>{
+    const isEditing=window._myEODEdit===r.id;
+    const siteLabel=r.site?(' · '+r.site):'';
+    if(isEditing){
+      return '<div class="card" style="margin-bottom:12px;padding:16px" id="eod-card-'+r.id+'">'
+        +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'
+        +'<div style="font-weight:700;font-size:15px">✏️ Editing Report</div>'
+        +'<div style="font-size:11px;color:var(--text2)">'+r.date+siteLabel+'</div>'
+        +'</div>'
+        +'<div class="eod-form">'
+        +'<div class="form-row"><label>✅ Work Done</label><textarea id="edit-summary-'+r.id+'" rows="3" style="width:100%;padding:10px;background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical">'+escHtml(r.summary||'')+'</textarea></div>'
+        +'<div class="form-row"><label>⚠️ Issues / Blockers</label><textarea id="edit-issues-'+r.id+'" rows="2" style="width:100%;padding:10px;background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical">'+escHtml(r.issues||'')+'</textarea></div>'
+        +'<div class="form-row"><label>📅 Tomorrow\'s Plan</label><textarea id="edit-tomorrow-'+r.id+'" rows="2" style="width:100%;padding:10px;background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical">'+escHtml(r.tomorrow||'')+'</textarea></div>'
+        +'<div class="form-row"><label>📣 Escalation</label><textarea id="edit-escalation-'+r.id+'" rows="2" style="width:100%;padding:10px;background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical">'+escHtml(r.escalation||'')+'</textarea></div>'
+        +'<div class="btn-row" style="margin-top:12px">'
+        +'<button class="btn-primary" onclick="saveEODEdit(\''+r.id+'\')">💾 Save Changes</button>'
+        +'<button class="btn-secondary" onclick="cancelEODEdit()">✖ Cancel</button>'
+        +'</div></div></div>';
+    }
+    return '<div class="card" style="margin-bottom:10px;padding:16px" id="eod-card-'+r.id+'">'
+      +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
+      +'<div style="flex:1">'
+      +'<div style="font-weight:700;font-size:14px">📋 '+r.date+siteLabel+'</div>'
+      +'<div style="font-size:11px;color:var(--text2);margin-top:2px">'+r.userName+' '+(r.editedAt?'· ✏️ edited':'')+'</div>'
+      +'</div>'
+      +'<div style="font-size:18px;color:'+moodColor[r.mood||'']+'">'+moodEmoji[r.mood||'']+'</div>'
+      +'<button class="btn-secondary btn-sm" onclick="startEODEdit(\''+r.id+'\')">✏️ Edit</button>'
+      +'</div>'
+      +'<div style="background:var(--navy2);border-radius:8px;padding:10px;margin-bottom:6px">'
+      +'<div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;margin-bottom:4px">✅ Work Done</div>'
+      +'<div style="font-size:13px;line-height:1.5">'+escHtml(r.summary||'—')+'</div>'
+      +'</div>'
+      +(r.issues?'<div style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:8px;padding:10px;margin-bottom:6px">'
+        +'<div style="font-size:10px;font-weight:700;color:var(--red);text-transform:uppercase;margin-bottom:4px">⚠️ Issues</div>'
+        +'<div style="font-size:13px;line-height:1.5">'+escHtml(r.issues)+'</div></div>':'')
+      +(r.tomorrow?'<div style="background:var(--navy2);border-radius:8px;padding:10px">'
+        +'<div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;margin-bottom:4px">📅 Tomorrow</div>'
+        +'<div style="font-size:13px;line-height:1.5">'+escHtml(r.tomorrow)+'</div></div>':'')
+      +'</div>';
+  }).join('');
+  c.innerHTML=html;
+}
+
+function escHtml(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function startEODEdit(id){
+  window._myEODEdit=id;
+  _renderMyEODs();
+  // Scroll to the editing card
+  setTimeout(()=>{const el=document.getElementById('eod-card-'+id);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},100);
+}
+
+function cancelEODEdit(){
+  window._myEODEdit=null;
+  _renderMyEODs();
+}
+
+async function saveEODEdit(id){
+  const summary=(document.getElementById('edit-summary-'+id)?.value||'').trim();
+  const issues=(document.getElementById('edit-issues-'+id)?.value||'').trim();
+  const tomorrow=(document.getElementById('edit-tomorrow-'+id)?.value||'').trim();
+  const escalation=(document.getElementById('edit-escalation-'+id)?.value||'').trim();
+  if(!summary){showToast('⚠️ Work summary cannot be empty','info');return;}
+  if(!window.fbUpdateEOD){showToast('⚠️ Firebase not connected','info');return;}
+  showToast('⏳ Saving...','info');
+  const ok=await window.fbUpdateEOD(id,{summary,issues,tomorrow,escalation});
+  if(ok){
+    // Update local cache
+    const r=window._myEODs&&window._myEODs.find(x=>x.id===id);
+    if(r){r.summary=summary;r.issues=issues;r.tomorrow=tomorrow;r.escalation=escalation;r.editedAt=true;}
+    window._myEODEdit=null;
+    _renderMyEODs();
+    showToast('✅ EOD report updated!','success');
+  } else {
+    showToast('❌ Update failed. Check connection.','info');
+  }
+}
+
+// ===================== TEAM EOD (all users can view) =====================
+async function pageTeamEODs(){
+  c.innerHTML='<div class="card" style="text-align:center;padding:32px;color:var(--text2)">⏳ Loading team reports...</div>';
+  if(!window.fbLoadEODs){
+    c.innerHTML='<div class="card" style="text-align:center;padding:32px;color:var(--red)">⚠️ Firebase not connected. Please refresh the page.</div>';
+    return;
+  }
+  c.innerHTML=`
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+    <button class="btn-primary btn-sm" onclick="loadTeamEODs()">🔄 Refresh</button>
+    <select id="team-eod-date" onchange="renderTeamEODs()" style="padding:7px 12px;background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+      <option value="all">All Dates</option>
+      <option value="today" selected>Today</option>
+      <option value="yesterday">Yesterday</option>
+      <option value="week">This Week</option>
+    </select>
+    <select id="team-eod-person" onchange="renderTeamEODs()" style="padding:7px 12px;background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+      <option value="all">All People</option>
+      ${Object.entries(USERS).map(([k,v])=>'<option value="'+k+'">'+v.name+'</option>').join('')}
+    </select>
+    <span id="team-eod-count" style="font-size:12px;color:var(--text2)"></span>
+  </div>
+  <div id="team-eod-list"><div style="text-align:center;padding:40px;color:var(--text2)">⏳ Loading...</div></div>`;
+  window._teamEODs=[];
+  await loadTeamEODs();
+}
+
+async function loadTeamEODs(){
+  const container=document.getElementById('team-eod-list');
+  if(!container||!window.fbLoadEODs)return;
+  container.innerHTML='<div style="text-align:center;padding:40px;color:var(--text2)">⏳ Loading from cloud...</div>';
+  window._teamEODs=await window.fbLoadEODs();
+  renderTeamEODs();
+}
+
+function renderTeamEODs(){
+  const container=document.getElementById('team-eod-list');
+  if(!container)return;
+  const dateF=document.getElementById('team-eod-date')?.value||'all';
+  const personF=document.getElementById('team-eod-person')?.value||'all';
+  const today=new Date().toISOString().split('T')[0];
+  const yesterday=new Date(Date.now()-86400000).toISOString().split('T')[0];
+  const weekAgo=new Date(Date.now()-7*86400000).toISOString().split('T')[0];
+  let reports=(window._teamEODs||[]).filter(r=>{
+    if(personF!=='all'&&r.user!==personF)return false;
+    if(dateF==='today'&&r.date!==today)return false;
+    if(dateF==='yesterday'&&r.date!==yesterday)return false;
+    if(dateF==='week'&&r.date<weekAgo)return false;
+    return true;
+  });
+  const cntEl=document.getElementById('team-eod-count');
+  if(cntEl)cntEl.textContent=reports.length+' report'+(reports.length!==1?'s':'');
+  if(!reports.length){
+    container.innerHTML='<div class="card" style="text-align:center;padding:40px"><div style="font-size:40px;margin-bottom:12px">📭</div><div style="color:var(--text2)">No reports found for this filter.</div></div>';
+    return;
+  }
+  const moodEmoji={great:'😄 Great',good:'😊 Good',okay:'😐 Okay',tough:'😔 Tough','':'—'};
+  const moodColor={great:'var(--green)',good:'var(--blue)',okay:'var(--gold)',tough:'var(--red)','':'var(--text2)'};
+  const byDate={};
+  reports.forEach(r=>{const d=r.date||'Unknown';if(!byDate[d])byDate[d]=[];byDate[d].push(r);});
+  const sortedDates=Object.keys(byDate).sort((a,b)=>b.localeCompare(a));
+  container.innerHTML=sortedDates.map(date=>{
+    const isToday=date===today;
+    return '<div style="margin-bottom:20px">'
+      +'<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:4px 0;border-bottom:1px solid var(--border)">'
+      +'📅 '+(isToday?'TODAY — ':'')+date+' · '+byDate[date].length+' report'+(byDate[date].length!==1?'s':'')+'</div>'
+      +byDate[date].map(r=>{
+        const mood=r.mood||'';
+        const initials=(r.userName||r.user||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+        const userColor=USERS[r.user]?.color||'var(--orange)';
+        const siteTag=r.site?'<span style="font-size:10px;background:var(--navy3);padding:2px 7px;border-radius:8px;color:var(--text2)">📍 '+r.site+'</span>':'';
+        const isMe=r.user===CU;
+        return '<div class="card" style="margin-bottom:10px;padding:16px">'
+          +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">'
+          +'<div style="width:38px;height:38px;border-radius:50%;background:'+userColor+';display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0">'+initials+'</div>'
+          +'<div style="flex:1">'
+          +'<div style="font-weight:700;font-size:15px">'+escHtml(r.userName||r.user||'—')+(isMe?' <span style="font-size:10px;background:var(--orange)22;color:var(--orange);border-radius:8px;padding:1px 6px">You</span>':'')+'</div>'
+          +'<div style="font-size:11px;color:var(--text2);margin-top:2px">'+escHtml(USERS[r.user]?.role||'')+' '+siteTag+(r.editedAt?' · ✏️ edited':'')+'</div>'
+          +'</div>'
+          +'<div style="text-align:right">'
+          +'<div style="font-size:13px;font-weight:600;color:'+moodColor[mood]+'">'+moodEmoji[mood]+'</div>'
+          +(isMe?'<button class="btn-secondary btn-sm" style="margin-top:4px;font-size:10px" onclick="showPage(\'my-eod\')">✏️ Edit</button>':'')
+          +'</div></div>'
+          +'<div style="display:grid;gap:8px">'
+          +'<div style="background:var(--navy2);border-radius:8px;padding:10px">'
+          +'<div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;margin-bottom:4px">✅ Work Done</div>'
+          +'<div style="font-size:13px;line-height:1.5">'+escHtml(r.summary||'—')+'</div></div>'
+          +(r.tomorrow?'<div style="background:var(--navy2);border-radius:8px;padding:10px">'
+            +'<div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;margin-bottom:4px">📅 Tomorrow</div>'
+            +'<div style="font-size:13px;line-height:1.5">'+escHtml(r.tomorrow)+'</div></div>':'')
+          +(r.issues?'<div style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:8px;padding:10px">'
+            +'<div style="font-size:10px;font-weight:700;color:var(--red);text-transform:uppercase;margin-bottom:4px">⚠️ Issues</div>'
+            +'<div style="font-size:13px;line-height:1.5;color:var(--red)">'+escHtml(r.issues)+'</div></div>':'')
+          +'</div></div>';
+      }).join('')
+      +'</div>';
+  }).join('');
 }
 
 // ===================== BADGE UPDATES =====================
