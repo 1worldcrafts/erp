@@ -404,6 +404,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <option value="raju">Raju (Fitter)</option>
         <option value="naval">Naval (Foreman – LG Noida)</option>
         <option value="ajay">Ajay (Foreman – DMRC TKD)</option>
+        <option value="nazir">Nazir (Planning Engineer)</option>
       </select>
     </div>
     <div class="form-group"><label>PIN / Password</label><input type="password" id="pin-input" placeholder="Enter your PIN" /></div>
@@ -468,6 +469,7 @@ const USERS={
   raju:{name:'Raju',role:'Fitter',dept:'Labour',hinglish:true,color:'#d35400',initials:'RJ',attDefaultSite:'ALL'},
   naval:{name:'Naval',role:'Foreman – LG Noida',dept:'Labour',hinglish:true,color:'#27ae60',initials:'NV',attDefaultSite:'LG-NOIDA'},
   ajay:{name:'Ajay',role:'Foreman – DMRC TKD',dept:'Labour',hinglish:true,color:'#2980b9',initials:'AJ',attDefaultSite:'DMRC-TKD'},
+  nazir:{name:'Nazir Ahmed',role:'Planning Engineer',dept:'Planning',hinglish:false,color:'#8e44ad',initials:'NA',attDefaultSite:'OFFICE'},
 };
 
 const SITES=[
@@ -604,6 +606,20 @@ const SOPs={
     {text:'Timeline check: aaj ka target poora hua ya nahi?',priority:'high'},
     {text:'Safety hazard? Immediately report karo',priority:'med'},
     {text:'EOD update bhejo Amit bhai ko',priority:'low'},
+  ],
+  nazir:[
+    {text:'Review all active site timelines – flag any task behind pace (ratio < 0.8)',priority:'high'},
+    {text:'Update Project Timeline with yesterday\'s progress quantities from site engineers',priority:'high'},
+    {text:'Check drawing register – any pending approvals or site queries on drawings?',priority:'high'},
+    {text:'Review BOQ vs actual quantities consumed – raise alert if variance > 10%',priority:'high'},
+    {text:'4-week material lookahead: coordinate with Purchase for critical items on site next week',priority:'high'},
+    {text:'Check manpower deployment vs planned for each site – flag shortfalls',priority:'med'},
+    {text:'Update S-curve data: planned vs actual progress % for active sites',priority:'med'},
+    {text:'Review open RFIs (Request For Information) and ensure no engineering query > 3 days old',priority:'med'},
+    {text:'Check ITP (Inspection & Test Plan) status – any pending QC hold points today?',priority:'med'},
+    {text:'Follow up on pending submittals / material approval documents',priority:'med'},
+    {text:'Check variation orders log – document any scope changes raised today',priority:'low'},
+    {text:'Compile planning summary for EOD – schedule health, next milestones, risks',priority:'low'},
   ],
 };
 
@@ -1009,6 +1025,24 @@ const NAV={
     {id:'my-eod',icon:'📋',label:'Mere EOD Reports'},
     {id:'team-eod',icon:'👥',label:'Team EOD (All)'},
   ],
+  nazir:[
+    {section:'Planning'},
+    {id:'dashboard',icon:'📐',label:'Planning Dashboard'},
+    {id:'tasks',icon:'✅',label:'My Tasks (SOP)'},
+    {id:'execution',icon:'⏱️',label:'Project Timeline'},
+    {id:'sites',icon:'🏗️',label:'Sites Overview'},
+    {section:'Tracking'},
+    {id:'purchase',icon:'📦',label:'Material Lookahead'},
+    {id:'rfq',icon:'📨',label:'RFQ / Procurement'},
+    {id:'project-costing',icon:'📊',label:'BOQ & Costing'},
+    {id:'planning',icon:'🗂️',label:'Planning Module'},
+    {section:'Reports'},
+    {id:'attendance',icon:'📅',label:'Manpower Tracking'},
+    {id:'ai-feedback',icon:'🤖',label:'AI Planning Tips'},
+    {id:'eod',icon:'📝',label:'EOD Report'},
+    {id:'my-eod',icon:'📋',label:'My Past Reports'},
+    {id:'team-eod',icon:'👥',label:'Team EOD (All)'},
+  ],
   default_office:[
     {section:'My Work'},
     {id:'dashboard',icon:'🏠',label:'Dashboard'},
@@ -1205,6 +1239,63 @@ function pageDashboard(){
           <div style="font-size:10px;margin-top:3px">${s.health==='green'?'🟢 On Track':s.health==='yellow'?'🟡 Watch':s.health==='red'?'🔴 Action':'⚪ Upcoming'}</div></div>
         </div>`).join('')}
       </div>
+    </div>`;
+  }
+
+  if(CU==='nazir'){
+    const allSites=(window.SITES||[]).filter(s=>s.status==='active'||s.status==='amc');
+    const healthyCount=allSites.filter(s=>s.health==='green').length;
+    const watchCount=allSites.filter(s=>s.health==='yellow').length;
+    const criticalCount=allSites.filter(s=>s.health==='red').length;
+    return `
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;padding:16px;background:linear-gradient(135deg,#2d1b4e 0%,#1a1a2e 100%);border:1px solid #8e44ad55;border-radius:12px">
+      <div class="avatar" style="background:#8e44ad;font-size:22px;width:52px;height:52px">NA</div>
+      <div>
+        <div style="font-size:18px;font-weight:700">Good Morning, Nazir! 📐</div>
+        <div style="font-size:13px;color:var(--text2);margin-top:3px">Planning Engineer · ${new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long'})}</div>
+      </div>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">Active Sites</div><div class="stat-value orange">${allSites.length}</div><div class="stat-sub">Under planning control</div></div>
+      <div class="stat-card"><div class="stat-label">🟢 On Schedule</div><div class="stat-value green">${healthyCount}</div><div class="stat-sub">Pace ratio ≥ 1.0</div></div>
+      <div class="stat-card"><div class="stat-label">🟡 Watch</div><div class="stat-value gold">${watchCount}</div><div class="stat-sub">Ratio 0.8 – 1.0</div></div>
+      <div class="stat-card"><div class="stat-label">🔴 Critical</div><div class="stat-value red">${criticalCount}</div><div class="stat-sub">Needs recovery plan</div></div>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">SOP Progress</div><div class="stat-value ${pct===100?'green':'blue'}">${pct}%</div><div class="stat-sub">${done} of ${sop.length} done</div></div>
+      <div class="stat-card"><div class="stat-label">Drawing Log</div><div class="stat-value blue">–</div><div class="stat-sub">Open in Planning Module</div></div>
+      <div class="stat-card"><div class="stat-label">Open RFIs</div><div class="stat-value orange">–</div><div class="stat-sub">Check site queries</div></div>
+      <div class="stat-card"><div class="stat-label">Pending Submittals</div><div class="stat-value red">–</div><div class="stat-sub">Material approvals</div></div>
+    </div>
+    <div class="ai-box">
+      <div class="ai-box-title">📐 Planning Priorities – ${new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</div>
+      <p>• <strong>Project Timeline</strong>: Review pace ratios for all active sites. Any ratio below 0.8 needs a recovery action plan today.<br>
+      • <strong>4-Week Lookahead</strong>: Coordinate material requirements with Priyanshu (Purchase) for next week's critical deliveries.<br>
+      • <strong>Drawing Register</strong>: Ensure all engineering queries from sites are responded to within 3 working days.<br>
+      • <strong>BOQ Tracking</strong>: Cross-check quantities consumed vs planned – flag variance items to Prayas if > 10%.<br>
+      • <strong>S-Curve Update</strong>: Post today's progress data after receiving site EODs from Amit/Rohtash/Umar/Rashid.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Planning Actions Today</div>
+      <div class="alert-item" style="border-left-color:var(--red)"><div class="alert-icon">📊</div><div class="alert-body"><h4>Update Project Timelines</h4><p>Enter yesterday's progress quantities from site engineers into Timeline module</p></div><div class="btn-row" style="margin-top:4px"><button class="btn-primary btn-xs" onclick="showPage('execution')">Open Timeline →</button></div></div>
+      <div class="alert-item" style="border-left-color:var(--orange)"><div class="alert-icon">📦</div><div class="alert-body"><h4>Material Lookahead – Week ${Math.ceil((new Date().getDate())/7)}</h4><p>Review 4-week material requirement and coordinate with Purchase for critical items</p></div><div class="btn-row" style="margin-top:4px"><button class="btn-primary btn-xs" onclick="showPage('purchase')">Open Purchase →</button></div></div>
+      <div class="alert-item" style="border-left-color:var(--blue)"><div class="alert-icon">🗂️</div><div class="alert-body"><h4>BOQ vs Actual Check</h4><p>Compare actual quantities consumed vs BOQ – update project costing tracker</p></div><div class="btn-row" style="margin-top:4px"><button class="btn-primary btn-xs" onclick="showPage('project-costing')">Open Costing →</button></div></div>
+      <div class="alert-item" style="border-left-color:#8e44ad"><div class="alert-icon">📐</div><div class="alert-body"><h4>Drawing & RFI Register</h4><p>Check pending engineering queries, drawing revisions, and submittal approvals</p></div><div class="btn-row" style="margin-top:4px"><button class="btn-primary btn-xs" onclick="showPage('planning')">Open Planning →</button></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Site Schedule Health</div>
+      <div class="sites-list">${allSites.map(s=>`
+        <div class="site-row" onclick="showPage('execution')">
+          <div class="site-status" style="background:${s.health==='green'?'var(--green)':s.health==='yellow'?'var(--gold)':s.health==='red'?'var(--red)':'#666'}"></div>
+          <div class="site-info"><div class="site-name">${s.name}</div><div class="site-people">${s.people}</div></div>
+          <div style="text-align:right"><div class="site-badge">${s.status.toUpperCase()}</div>
+          <div style="font-size:10px;margin-top:3px">${s.health==='green'?'🟢 On Track':s.health==='yellow'?'🟡 Watch':s.health==='red'?'🔴 Action Needed':'⚪ Upcoming'}</div></div>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="showPage('tasks')">View My SOP Checklist →</button>
+      <button class="btn-secondary" onclick="showPage('eod')">Submit EOD →</button>
     </div>`;
   }
 
