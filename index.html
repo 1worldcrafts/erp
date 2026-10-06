@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -96,13 +96,26 @@
 
     window.fbLoadMyEODs = async function(userKey) {
       try {
+        // Use where only (no orderBy) to avoid needing a composite Firestore index
         const snap = await db.collection('eod_reports')
           .where('user','==',userKey)
-          .orderBy('timestamp','desc')
-          .limit(30)
+          .limit(50)
           .get();
-        return snap.docs.map(d=>({id:d.id,...d.data()}));
-      } catch(e) { console.error('My EOD load failed', e); return []; }
+        // Sort client-side by date desc
+        const docs = snap.docs.map(d=>({id:d.id,...d.data()}));
+        docs.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+        return docs;
+      } catch(e) {
+        console.error('My EOD load failed', e);
+        // Fallback: load all and filter
+        try {
+          const snap2 = await db.collection('eod_reports').get();
+          const all = snap2.docs.map(d=>({id:d.id,...d.data()}));
+          const filtered = all.filter(r=>r.user===userKey);
+          filtered.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+          return filtered;
+        } catch(e2) { return []; }
+      }
     };
 
     window.fbLoadSiteUpdates = async function() {
@@ -117,6 +130,48 @@
         await db.collection('attendance').add({...data,savedBy:window.CU||'unknown',timestamp:firebase.firestore.FieldValue.serverTimestamp(),date:new Date().toISOString().split('T')[0]});
         return true;
       } catch(e){console.error('Attendance save failed',e);return false;}
+    };
+
+    // ── Attendance Employees stored in Firestore per site ──
+    window.fbSaveAttEmployees = async function(siteCode, employees) {
+      try {
+        await db.collection('att_employees').doc(siteCode).set({
+          siteCode, employees,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: window.CU || 'unknown'
+        });
+        return true;
+      } catch(e) { console.error('Att employees save failed', e); return false; }
+    };
+
+    window.fbLoadAttEmployees = async function(siteCode) {
+      try {
+        const doc = await db.collection('att_employees').doc(siteCode).get();
+        if (doc.exists) return doc.data().employees || [];
+        return null; // null = not in cloud yet
+      } catch(e) { console.error('Att employees load failed', e); return null; }
+    };
+
+    // ── Attendance Data (daily marks) stored in Firestore per site+month ──
+    window.fbSaveAttData = async function(siteCode, monthStr, data) {
+      try {
+        const docId = siteCode + '_' + monthStr;
+        await db.collection('att_data').doc(docId).set({
+          siteCode, monthStr, data,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: window.CU || 'unknown'
+        });
+        return true;
+      } catch(e) { console.error('Att data save failed', e); return false; }
+    };
+
+    window.fbLoadAttData = async function(siteCode, monthStr) {
+      try {
+        const docId = siteCode + '_' + monthStr;
+        const doc = await db.collection('att_data').doc(docId).get();
+        if (doc.exists) return doc.data().data || {};
+        return null;
+      } catch(e) { console.error('Att data load failed', e); return null; }
     };
     window.fbSavePR = async function(data) {
       try {
@@ -400,19 +455,19 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <script>
 // ======================== DATA ========================
 const USERS={
-  prayas:{name:'Prayas Balyan',role:'Owner',dept:'Management',hinglish:false,color:'#f47c20',initials:'PB'},
-  kuldeep:{name:'Kuldeep',role:'Accounts',dept:'Finance',hinglish:false,color:'#3498db',initials:'KS'},
-  priyanshu:{name:'Priyanshu',role:'Purchase',dept:'Procurement',hinglish:false,color:'#9b59b6',initials:'PK'},
-  vinay:{name:'Vinay Arya',role:'Sales',dept:'Sales',hinglish:false,color:'#2ecc71',initials:'VA'},
-  amit:{name:'Amit',role:'Execution Manager',dept:'Operations',hinglish:true,color:'#e67e22',initials:'AM'},
-  rohtash:{name:'Rohtash',role:'Site Lead – Rudrapur',dept:'Operations',hinglish:false,color:'#1abc9c',initials:'RS'},
-  pradeep:{name:'Pradeep',role:'Site Supervisor',dept:'Operations',hinglish:false,color:'#34495e',initials:'PP'},
-  umar:{name:'Umar',role:'Site Engineer – DMRC TKRC',dept:'Operations',hinglish:false,color:'#e74c3c',initials:'UM'},
-  rashid:{name:'Rashid',role:'Site Engineer – Ceph',dept:'Operations',hinglish:false,color:'#c0392b',initials:'RA'},
-  fathe:{name:'Fathe',role:'Support / Backup',dept:'Operations',hinglish:true,color:'#7f8c8d',initials:'FA'},
-  raju:{name:'Raju',role:'Fitter',dept:'Labour',hinglish:true,color:'#d35400',initials:'RJ'},
-  naval:{name:'Naval',role:'Foreman – LG Noida',dept:'Labour',hinglish:true,color:'#27ae60',initials:'NV'},
-  ajay:{name:'Ajay',role:'Foreman – DMRC TKD',dept:'Labour',hinglish:true,color:'#2980b9',initials:'AJ'},
+  prayas:{name:'Prayas Balyan',role:'Owner',dept:'Management',hinglish:false,color:'#f47c20',initials:'PB',attDefaultSite:'ALL'},
+  kuldeep:{name:'Kuldeep',role:'Accounts',dept:'Finance',hinglish:false,color:'#3498db',initials:'KS',attDefaultSite:'OFFICE'},
+  priyanshu:{name:'Priyanshu',role:'Purchase',dept:'Procurement',hinglish:false,color:'#9b59b6',initials:'PK',attDefaultSite:'OFFICE'},
+  vinay:{name:'Vinay Arya',role:'Sales',dept:'Sales',hinglish:false,color:'#2ecc71',initials:'VA',attDefaultSite:'OFFICE'},
+  amit:{name:'Amit',role:'Execution Manager',dept:'Operations',hinglish:true,color:'#e67e22',initials:'AM',attDefaultSite:'ALL'},
+  rohtash:{name:'Rohtash',role:'Site Lead – Rudrapur',dept:'Operations',hinglish:false,color:'#1abc9c',initials:'RS',attDefaultSite:'PERFETTI-RDR'},
+  pradeep:{name:'Pradeep',role:'Site Supervisor',dept:'Operations',hinglish:false,color:'#34495e',initials:'PP',attDefaultSite:'PERFETTI-RDR'},
+  umar:{name:'Umar',role:'Site Engineer – DMRC TKRC',dept:'Operations',hinglish:false,color:'#e74c3c',initials:'UM',attDefaultSite:'DMRC-TKRC'},
+  rashid:{name:'Rashid',role:'Site Engineer – Ceph',dept:'Operations',hinglish:false,color:'#c0392b',initials:'RA',attDefaultSite:'CEPH-DB'},
+  fathe:{name:'Fathe',role:'Support / Backup',dept:'Operations',hinglish:true,color:'#7f8c8d',initials:'FA',attDefaultSite:'OFFICE'},
+  raju:{name:'Raju',role:'Fitter',dept:'Labour',hinglish:true,color:'#d35400',initials:'RJ',attDefaultSite:'ALL'},
+  naval:{name:'Naval',role:'Foreman – LG Noida',dept:'Labour',hinglish:true,color:'#27ae60',initials:'NV',attDefaultSite:'LG-NOIDA'},
+  ajay:{name:'Ajay',role:'Foreman – DMRC TKD',dept:'Labour',hinglish:true,color:'#2980b9',initials:'AJ',attDefaultSite:'DMRC-TKD'},
 };
 
 const SITES=[
@@ -581,28 +636,70 @@ let VENDOR_COMPARISONS=[
 ];
 
 // ======================== GLOBAL PERSISTENT STORES ========================
-// ATT_EMPLOYEES — now PER SITE. Use getAttEmployees(siteCode) / saveAttEmployees(siteCode, arr)
-// Global ATT_EMPLOYEES kept for backward compat but not the primary store
+// ATT_EMPLOYEES — stored in Firebase per site + localStorage cache
 window.ATT_EMPLOYEES=[];
+// In-memory cache: {siteCode: [emp,...]}
+window._empCache={};
+
 function getAttEmployees(siteCode){
   if(!siteCode)return[];
-  try{const s=localStorage.getItem('1wc_att_emp_'+siteCode);if(s)return JSON.parse(s);}catch(e){}
-  // seed default employees only for the first-ever site
+  // Return from memory cache if available
+  if(window._empCache[siteCode])return window._empCache[siteCode];
+  // Fall back to localStorage cache while cloud loads
+  try{const s=localStorage.getItem('1wc_att_emp_'+siteCode);if(s){const arr=JSON.parse(s);window._empCache[siteCode]=arr;return arr;}}catch(e){}
   return[];
+}
+async function loadAttEmployeesCloud(siteCode){
+  if(!siteCode)return[];
+  if(!window.fbLoadAttEmployees)return getAttEmployees(siteCode);
+  const cloudEmps=await window.fbLoadAttEmployees(siteCode);
+  if(cloudEmps!==null){
+    window._empCache[siteCode]=cloudEmps;
+    try{localStorage.setItem('1wc_att_emp_'+siteCode,JSON.stringify(cloudEmps));}catch(e){}
+    return cloudEmps;
+  }
+  return getAttEmployees(siteCode);
 }
 function saveAttEmployees(siteCode,arr){
   if(!siteCode)return;
+  window._empCache[siteCode]=arr;
   try{localStorage.setItem('1wc_att_emp_'+siteCode,JSON.stringify(arr));}catch(e){}
+  // Save to Firebase async (don't block UI)
+  if(window.fbSaveAttEmployees)window.fbSaveAttEmployees(siteCode,arr);
 }
-// kept for backward compat with old calls
+// kept for backward compat
 function saveATTEmployees(){
   const site=document.getElementById('att-site')?.value||'';
   saveAttEmployees(site,window.ATT_EMPLOYEES);
 }
 
-// ATT_SITES seeded from SITES
-window.ATT_SITES=(()=>{try{const s=localStorage.getItem('1wc_att_sites');if(s)return JSON.parse(s);}catch(e){}return SITES.filter(s=>s.status==='active').map(s=>({code:s.code,name:s.name}));})();
+// ATT_SITES seeded from SITES + always include OFFICE
+window.ATT_SITES=(()=>{
+  try{const s=localStorage.getItem('1wc_att_sites');if(s){const arr=JSON.parse(s);if(!arr.find(x=>x.code==='OFFICE'))arr.unshift({code:'OFFICE',name:'Head Office – Faridabad'});return arr;}}catch(e){}
+  const sites=SITES.filter(s=>s.status==='active').map(s=>({code:s.code,name:s.name}));
+  sites.unshift({code:'OFFICE',name:'Head Office – Faridabad'});
+  return sites;
+})();
 function saveATTSites(){try{localStorage.setItem('1wc_att_sites',JSON.stringify(window.ATT_SITES));}catch(e){}}
+
+// Seed office employees if OFFICE site has none yet
+window._officeStaffSeeded=false;
+function seedOfficeEmployees(){
+  if(window._officeStaffSeeded)return;
+  window._officeStaffSeeded=true;
+  const existing=getAttEmployees('OFFICE');
+  if(existing.length>0)return; // already set up
+  const officeStaff=[
+    {id:'off-prayas',name:'Prayas Balyan',role:'Owner / Director',workerType:'employee',wage:0,wageType:'salary'},
+    {id:'off-kuldeep',name:'Kuldeep',role:'Accounts',workerType:'employee',wage:0,wageType:'salary'},
+    {id:'off-vinay',name:'Vinay Arya',role:'Sales',workerType:'employee',wage:0,wageType:'salary'},
+    {id:'off-priyanshu',name:'Priyanshu',role:'Purchase',workerType:'employee',wage:0,wageType:'salary'},
+    {id:'off-amit',name:'Amit',role:'Execution Manager',workerType:'employee',wage:0,wageType:'salary'},
+    {id:'off-fathe',name:'Fathe',role:'Support / Backup',workerType:'employee',wage:0,wageType:'salary'},
+    {id:'off-nazir',name:'Nazir',role:'Office Support',workerType:'employee',wage:0,wageType:'salary'},
+  ];
+  saveAttEmployees('OFFICE',officeStaff);
+}
 
 // QUOTED_JOBS
 window.QUOTED_JOBS=(()=>{try{const s=localStorage.getItem('1wc_quoted_jobs');if(s)return JSON.parse(s);}catch(e){}return SALES_PIPELINE.map(p=>({id:p.id,client:p.client,desc:p.desc,value:p.value||0,stage:p.stage,date:p.deadline||new Date().toISOString().split('T')[0]}));})();
@@ -2767,11 +2864,22 @@ function pageExecution(){
 // Data structure: {empId: {day: {s:'P', ot:0}}}
 // ═══════════════════════════════════════════════════════
 function pageAttendance(){
+  // Seed office employees on first run
+  seedOfficeEmployees();
   const today=new Date();
   const defaultMonth=today.toISOString().substr(0,7);
-  // Load employees for first site
-  const firstSite=window.ATT_SITES[0]?window.ATT_SITES[0].code:'';
-  window.ATT_EMPLOYEES=getAttEmployees(firstSite);
+  // Determine default site for this user
+  const u=USERS[CU]||{};
+  const userDefaultSite=u.attDefaultSite||'';
+  // Find matching site in ATT_SITES
+  let startSite=window.ATT_SITES[0]?window.ATT_SITES[0].code:'';
+  if(userDefaultSite==='OFFICE'){
+    startSite='OFFICE';
+  } else if(userDefaultSite&&userDefaultSite!=='ALL'){
+    const found=window.ATT_SITES.find(s=>s.code===userDefaultSite);
+    if(found)startSite=found.code;
+  }
+  window.ATT_EMPLOYEES=getAttEmployees(startSite);
   c.innerHTML=`
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
     <div class="page-title" style="margin:0">📋 Attendance Register</div>
@@ -2786,29 +2894,55 @@ function pageAttendance(){
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
       <select id="att-site" onchange="attSiteChanged()" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-weight:700">
-        ${window.ATT_SITES.map(s=>`<option value="${s.code}">${s.name} (${s.code})</option>`).join('')}
+        ${window.ATT_SITES.map(s=>`<option value="${s.code}" ${s.code===startSite?'selected':''}>${s.name} (${s.code})</option>`).join('')}
       </select>
-      <input id="att-month" type="month" value="${defaultMonth}" onchange="renderAttGrid()" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text)"/>
+      <input id="att-month" type="month" value="${defaultMonth}" onchange="attMonthChanged()" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text)"/>
       <div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11px">
         <span style="background:var(--green)22;color:var(--green);padding:3px 8px;border-radius:12px;font-weight:700">P=Present</span>
         <span style="background:var(--red)22;color:var(--red);padding:3px 8px;border-radius:12px;font-weight:700">A=Absent</span>
-        <span style="background:#55555522;color:#999;padding:3px 8px;border-radius:12px;font-weight:700">W=Week Off</span>
+        <span style="background:#55555522;color:#999;padding:3px 8px;border-radius:12px;font-weight:700">WO=Week Off</span>
         <span style="background:var(--blue)22;color:var(--blue);padding:3px 8px;border-radius:12px;font-weight:700">H=Holiday</span>
-        <span style="color:var(--text2);padding:3px 8px;font-size:10px">OT col = overtime hours (0–16, decimals ok)</span>
+        <span style="color:var(--text2);padding:3px 8px;font-size:10px">OT=overtime hours | Staff Sunday pay only if marked WO</span>
       </div>
     </div>
   </div>
+  <div id="att-cloud-status" style="padding:6px 0;font-size:12px;color:var(--text2)"></div>
   <div style="overflow-x:auto;margin-bottom:16px">
     <div id="att-table-wrap"></div>
   </div>
   <div class="card" id="att-wages-summary" style="margin-bottom:16px"></div>`;
+  // Load from cloud then render
+  attLoadSiteData(startSite);
+}
+
+async function attLoadSiteData(siteCode){
+  const statusEl=document.getElementById('att-cloud-status');
+  if(statusEl)statusEl.innerHTML='<span style="color:var(--text2)">⏳ Loading employees from cloud...</span>';
+  // Load employees from cloud
+  const emps=await loadAttEmployeesCloud(siteCode);
+  window.ATT_EMPLOYEES=emps||[];
+  // Load attendance data from cloud
+  const monthStr=document.getElementById('att-month')?.value||new Date().toISOString().substr(0,7);
+  const cloudData=window.fbLoadAttData?await window.fbLoadAttData(siteCode,monthStr):null;
+  if(cloudData!==null){
+    // Merge cloud data into localStorage
+    try{localStorage.setItem('1wc_attendance_'+siteCode+'_'+monthStr,JSON.stringify(cloudData));}catch(e){}
+  }
+  if(statusEl)statusEl.innerHTML='<span style="color:var(--green)">✅ Synced from cloud</span>';
+  setTimeout(()=>{if(statusEl)statusEl.innerHTML='';},2000);
   renderAttGrid();
 }
+
 function attSiteChanged(){
-  // When site changes, reload that site's employees
   const site=document.getElementById('att-site')?.value||'';
   window.ATT_EMPLOYEES=getAttEmployees(site);
-  renderAttGrid();
+  renderAttGrid(); // show cached immediately
+  attLoadSiteData(site); // then sync from cloud
+}
+
+function attMonthChanged(){
+  const site=document.getElementById('att-site')?.value||'';
+  attLoadSiteData(site);
 }
 function getDaysInMonth(monthStr){
   const [y,m]=monthStr.split('-').map(Number);
@@ -2835,43 +2969,41 @@ function getCell(eAtt,d){
 // ── Wage calculation per worker type ──────────────────────────────
 // workerType: 'labour' | 'employee'
 // LABOUR:   monthly÷26 per day. P=paid. A=no pay. W/WO=unpaid off. Sunday auto=WO unpaid.
-// EMPLOYEE: monthly÷daysInMonth per day. P=paid. A=no pay. W/WO=paid off. H=paid. Sundays=paid WO.
+// LABOUR: monthly÷26 per day. P=paid. A=no pay. W/WO=paid (weekly off). H=paid. Sundays=NOT auto-paid.
+// EMPLOYEE: monthly÷daysInMonth per day. P=paid. A=no pay. W/WO=paid. H=paid. Sundays=paid only when marked WO. P on Sunday = carry-forward paid leave.
 // For both: OT = (dailyRate÷8) × OT_hours  (only on days where status is P or H+work)
-// Empty cell on a Sunday → treated as WO automatically
 function calcWages(emp, attData, monthStr){
   const numDays=getDaysInMonth(monthStr);
   const [yr,mo]=monthStr.split('-').map(Number);
   const wt=emp.workerType||'labour';
   const wage=parseFloat(emp.wage)||0;
   const dailyRate=wt==='labour'?(wage/26):(wage/numDays);
-  let totalPay=0, pCount=0, aCount=0, wCount=0, otTotal=0;
+  let totalPay=0, pCount=0, aCount=0, wCount=0, otTotal=0, sundayCarryLeave=0;
   for(let d=1;d<=numDays;d++){
     const cell=getCell(attData,d);
     const dow=new Date(yr,mo-1,d).getDay(); // 0=Sun
     const isSunday=dow===0;
-    // Resolve effective status: blank on sunday = WO; blank weekday = not yet marked (skip pay)
     let status=cell.s;
-    if(status===''&&isSunday) status='W'; // auto WO for unmarked Sundays
     const ot=parseFloat(cell.ot)||0;
     otTotal+=ot;
     if(status==='P'){
       pCount++;
       totalPay+=dailyRate+(dailyRate/8)*ot;
+      // Employee working on Sunday earns carry-forward paid leave (not extra pay)
+      if(isSunday && wt==='employee') sundayCarryLeave++;
     } else if(status==='A'){
       aCount++;
-      // No pay for absent — any OT on absent day ignored
     } else if(status==='W'||status==='WO'){
       wCount++;
-      // Employee: WO/Sunday = paid day off
-      if(wt==='employee') totalPay+=dailyRate;
-      // Labour: WO = unpaid (dailyRate÷26 model doesn't pay for W)
+      // WO: paid for both labour and employee (explicitly marked weekly-off)
+      totalPay+=dailyRate;
     } else if(status==='H'){
-      // Holiday — both types get paid; OT if they worked on holiday
+      // Holiday — paid; OT if they worked
       totalPay+=dailyRate+(dailyRate/8)*ot;
     }
-    // status==='' on a weekday = not yet filled in; no pay either way (safe default)
+    // status==='' (blank) = not yet marked → no pay, no count
   }
-  return{totalPay,pCount,aCount,wCount,otTotal,dailyRate};
+  return{totalPay,pCount,aCount,wCount,otTotal,dailyRate,sundayCarryLeave};
 }
 function renderAttGrid(){
   const wrap=document.getElementById('att-table-wrap');
@@ -2900,7 +3032,7 @@ function renderAttGrid(){
   const rows=window.ATT_EMPLOYEES.map(e=>{
     const eAtt=attData[e.id]||{};
     const wt=e.workerType||'labour';
-    const {totalPay,pCount,aCount,wCount,otTotal}=calcWages(e,eAtt,monthStr);
+    const {totalPay,pCount,aCount,wCount,otTotal,sundayCarryLeave}=calcWages(e,eAtt,monthStr);
     totalWages+=totalPay;
     const cells=days.map(d=>{
       const cell=getCell(eAtt,d);
@@ -2922,18 +3054,23 @@ function renderAttGrid(){
         +'</td>';
     }).join('');
     const wtTag=wt==='employee'?'<span style="font-size:9px;background:var(--blue)22;color:var(--blue);border-radius:8px;padding:1px 5px">Staff</span>':'<span style="font-size:9px;background:var(--orange)22;color:var(--orange);border-radius:8px;padding:1px 5px">Labour</span>';
+    const carryTag=sundayCarryLeave>0?'<div style="font-size:9px;color:var(--blue);margin-top:1px">+'+sundayCarryLeave+' carry leave</div>':'';
     return '<tr style="border-bottom:1px solid var(--border)" data-emp-row="'+e.id+'">'
-      +'<td style="padding:6px 8px;white-space:nowrap;min-width:155px;border-right:1px solid var(--border)">'
+      +'<td style="padding:6px 8px;white-space:nowrap;min-width:165px;border-right:1px solid var(--border)">'
       +'<div style="font-weight:600;font-size:12px">'+e.name+' '+wtTag+'</div>'
       +'<div style="font-size:10px;color:var(--text2)">'+e.role+'</div>'
       +'<div style="font-size:10px;color:var(--gold)">₹'+e.wage.toLocaleString('en-IN')+'/mo</div>'
+      +carryTag
       +'</td>'
       +cells
       +'<td class="att-p" style="text-align:center;font-weight:700;color:var(--green);padding:4px 5px;border-left:2px solid var(--border)">'+pCount+'</td>'
       +'<td class="att-a" style="text-align:center;font-weight:700;color:var(--red);padding:4px 5px">'+aCount+'</td>'
       +'<td class="att-ot" style="text-align:center;font-weight:700;color:var(--orange);padding:4px 5px">'+(otTotal||0)+'</td>'
       +'<td class="att-wages" style="text-align:right;font-weight:700;padding:4px 8px;color:var(--gold);white-space:nowrap">₹'+Math.round(totalPay).toLocaleString('en-IN')+'</td>'
-      +'<td style="text-align:center;padding:4px 5px"><button onclick="deleteEmployee(\''+e.id+'\')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px" title="Remove">🗑️</button></td>'
+      +'<td style="text-align:center;padding:4px 2px">'
+      +'<button onclick="openEditEmployee(\''+e.id+'\')" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:13px;display:block" title="Edit">✏️</button>'
+      +'<button onclick="deleteEmployee(\''+e.id+'\')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;display:block" title="Remove">🗑️</button>'
+      +'</td>'
       +'</tr>';
   }).join('');
   wrap.innerHTML='<table style="border-collapse:collapse;font-size:11px;width:100%;min-width:'+(160+numDays*65+220)+'px">'
@@ -2949,7 +3086,7 @@ function renderAttGrid(){
   if(summary)summary.innerHTML='<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">'
     +'<div style="font-weight:700;font-size:15px">💰 Total Net Payable: <span style="color:var(--gold)">₹'+Math.round(totalWages).toLocaleString('en-IN')+'</span></div>'
     +'<div style="font-size:12px;color:var(--text2)">Month: '+monthStr+' | Site: '+site+'</div>'
-    +'<div style="font-size:11px;color:var(--text2)">Labour: monthly÷26 days. Staff: monthly÷days in month. OT = daily_rate÷8×hrs. Staff Sundays paid.</div>'
+    +'<div style="font-size:11px;color:var(--text2)">Labour: monthly÷26 days, WO=paid. Staff: monthly÷days in month, WO=paid, P on Sunday=carry leave.</div>'
     +'</div>';
 }
 function attStatusChange(sel){
@@ -2961,6 +3098,10 @@ function attStatusChange(sel){
   const prev=getCell(data[empId],day);
   data[empId][day]={s:val,ot:prev.ot||0};
   saveAttData(data);
+  // Also persist to Firebase
+  const _sSite=document.getElementById('att-site')?.value||'';
+  const _sMon=document.getElementById('att-month')?.value||new Date().toISOString().substr(0,7);
+  if(window.fbSaveAttData)window.fbSaveAttData(_sSite,_sMon,data);
   const scMap={P:'var(--green)',A:'var(--red)',W:'#888',WO:'#888',H:'var(--blue)'};
   sel.style.background=(val?(scMap[val]||'var(--bg2)')+'22':'var(--bg2)');
   sel.style.color=val?(scMap[val]||'var(--text)'):'var(--text2)';
@@ -2976,6 +3117,10 @@ function attOTChange(inp){
   const prev=getCell(data[empId],day);
   data[empId][day]={s:prev.s||'',ot:ot};
   saveAttData(data);
+  // Also persist to Firebase
+  const _oSite=document.getElementById('att-site')?.value||'';
+  const _oMon=document.getElementById('att-month')?.value||new Date().toISOString().substr(0,7);
+  if(window.fbSaveAttData)window.fbSaveAttData(_oSite,_oMon,data);
   inp.style.color=ot>0?'var(--orange)':'var(--text2)';
   _updateAttRow(empId);
   updateAttWagesSummary();
@@ -3020,6 +3165,41 @@ function deleteEmployee(id){
   saveAttEmployees(site,window.ATT_EMPLOYEES);
   renderAttGrid();
   showToast('Employee removed','info');
+}
+function openEditEmployee(id){
+  const emp=window.ATT_EMPLOYEES.find(e=>e.id===id);
+  if(!emp){showToast('Employee not found','error');return;}
+  openModal('✏️ Edit Employee','<div class="eod-form">'
+    +'<div class="row2">'
+    +'<div class="form-row"><label>Full Name *</label><input id="edit-emp-name" value="'+escHtml(emp.name)+'"/></div>'
+    +'<div class="form-row"><label>Role / Designation</label><input id="edit-emp-role" value="'+escHtml(emp.role||'')+'"/></div>'
+    +'</div>'
+    +'<div class="form-row"><label>Worker Type *</label>'
+    +'<select id="edit-emp-wtype">'
+    +'<option value="labour" '+(emp.workerType==='labour'?'selected':'')+'>👷 Labour (daily wage ÷ 26, WO=paid)</option>'
+    +'<option value="employee" '+(emp.workerType==='employee'?'selected':'')+'>👔 Employee / Staff (monthly ÷ days in month, WO=paid)</option>'
+    +'</select></div>'
+    +'<div class="form-row"><label>Monthly Salary / Wage (₹)</label><input id="edit-emp-wage" type="number" value="'+(emp.wage||0)+'" min="0"/></div>'
+    +'<div class="btn-row" style="margin-top:16px">'
+    +'<button class="btn-primary" onclick="saveEditEmployee(\''+id+'\')">💾 Save Changes</button>'
+    +'<button class="btn-secondary" onclick="closeModal()">Cancel</button>'
+    +'</div>'
+    +'</div>');
+}
+function saveEditEmployee(id){
+  const name=document.getElementById('edit-emp-name')?.value.trim();
+  const role=document.getElementById('edit-emp-role')?.value.trim()||'';
+  const wtype=document.getElementById('edit-emp-wtype')?.value||'labour';
+  const wage=parseFloat(document.getElementById('edit-emp-wage')?.value)||0;
+  if(!name){showToast('Name is required','error');return;}
+  const idx=window.ATT_EMPLOYEES.findIndex(e=>e.id===id);
+  if(idx===-1){showToast('Employee not found','error');return;}
+  window.ATT_EMPLOYEES[idx]={...window.ATT_EMPLOYEES[idx],name,role,workerType:wtype,wage};
+  const site=document.getElementById('att-site')?.value||'';
+  saveAttEmployees(site,window.ATT_EMPLOYEES);
+  closeModal();
+  renderAttGrid();
+  showToast('✅ '+name+' updated','success');
 }
 function openAddEmployee(){
   openModal('👤 Add Employee to This Site','<div class="eod-form">'
