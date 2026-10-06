@@ -2906,21 +2906,56 @@ function ptGetSubtask(siteCode,taskId,subId){
   return task?(task.subtasks||[]).find(s=>s.id===subId):null;
 }
 function ptCalcHealth(item){
-  // item = task or subtask, has totalQty, dailyLogs, startDate, durationDays
+  // item = task or subtask: totalQty, dailyLogs, startDate, durationDays
   const done=ptDoneQty(item);
   const total=parseFloat(item.totalQty)||0;
-  if(total===0) return {pct:0,status:'pending',color:'var(--text2)'};
+  if(total===0) return {pct:0,status:'Not Started',dot:'⚪',color:'var(--text2)',ratio:0,done:0,total:0,expectedEnd:null};
   const pct=Math.min(100,Math.round((done/total)*100));
-  const today=new Date();
+  const today=new Date(); today.setHours(0,0,0,0);
   const start=item.startDate?new Date(item.startDate):null;
+  if(start) start.setHours(0,0,0,0);
   const dur=parseInt(item.durationDays)||0;
   const expectedEnd=start&&dur?new Date(start.getTime()+dur*86400000):null;
-  let status='on-track', color='var(--green)';
-  if(pct>=100){status='done';color='var(--green)';}
-  else if(expectedEnd&&today>expectedEnd){status='delayed';color='var(--red)';}
-  else if(pct>0){status='ongoing';color='var(--blue)';}
-  else{status='not-started';color='var(--text2)';}
-  return{pct,status,color,done,total,expectedEnd};
+
+  // ── Completed ──────────────────────────────────────────────
+  if(pct>=100) return{pct:100,status:'Completed ✅',dot:'🟢',color:'var(--green)',ratio:null,done,total,expectedEnd};
+
+  // ── Not yet started ────────────────────────────────────────
+  if(done===0 && (!start || today<start)){
+    return{pct:0,status:'Not Started',dot:'⚪',color:'var(--text2)',ratio:0,done,total,expectedEnd};
+  }
+
+  // ── Pace-ratio health (core logic) ─────────────────────────
+  // Required avg qty per day = totalQty / totalDays
+  // Days elapsed so far (from startDate to today, capped at duration)
+  let ratio=null;
+  let dotColor='var(--text2)';
+  let dot='⚪';
+  let status='Not Started';
+  if(start&&dur){
+    const totalDays=dur;
+    const reqPerDay=total/totalDays;               // required daily rate
+    // Elapsed days: from start to today (min 1 so day-0 doesn't divide by zero)
+    const msElapsed=Math.max(today-start,0);
+    const daysElapsed=Math.max(1,Math.min(Math.floor(msElapsed/86400000)+1,totalDays));
+    // Cumulative expected qty by today = reqPerDay × daysElapsed
+    const expectedByToday=reqPerDay*daysElapsed;
+    // Actual pace ratio = achieved so far / what should have been done by today
+    ratio=expectedByToday>0?done/expectedByToday:0;
+    if(ratio>1){
+      status='Very Healthy 🌟'; dot='🟢'; dotColor='#1a7a2e'; // dark green
+    } else if(ratio===1){
+      status='Healthy'; dot='🟢'; dotColor='var(--green)';
+    } else if(ratio>=0.8){
+      status='OK ⚡'; dot='🟡'; dotColor='var(--gold)';
+    } else {
+      status='Unhealthy – Needs Attention 🚨'; dot='🔴'; dotColor='var(--red)';
+    }
+  } else {
+    // No start/duration set — just show progress
+    if(done>0){status='Ongoing';dot='🔵';dotColor='var(--blue)';}
+  }
+  return{pct,status,dot,color:dotColor,ratio:ratio!==null?Math.round(ratio*100)/100:null,done,total,expectedEnd};
 }
 function ptDoneQty(item){
   return((item.dailyLogs||[]).reduce((s,l)=>s+(parseFloat(l.qty)||0),0));
@@ -2938,23 +2973,26 @@ function ptActualEnd(item){
 }
 function ptOverallSiteHealth(siteCode){
   const tasks=(window.PT_DATA[siteCode]||{tasks:[]}).tasks;
-  if(!tasks.length)return{pct:0,status:'No tasks',color:'var(--text2)'};
-  let totalPct=0, hasDelayed=false, allDone=true;
+  if(!tasks.length)return{pct:0,status:'No tasks',dot:'⚪',color:'var(--text2)'};
+  let totalPct=0, ratioSum=0, ratioCount=0, allDone=true;
   tasks.forEach(t=>{
     const items=t.subtasks&&t.subtasks.length?t.subtasks:[t];
     items.forEach(item=>{
       const h=ptCalcHealth(item);
       totalPct+=h.pct;
-      if(h.status==='delayed')hasDelayed=true;
-      if(h.status!=='done')allDone=false;
+      if(h.status!=='Completed ✅')allDone=false;
+      if(h.ratio!==null){ratioSum+=h.ratio;ratioCount++;}
     });
   });
   const itemCount=tasks.reduce((s,t)=>s+((t.subtasks&&t.subtasks.length)?t.subtasks.length:1),0);
-  const avg=itemCount?Math.round(totalPct/itemCount):0;
-  if(allDone)return{pct:100,status:'Completed ✅',color:'var(--green)'};
-  if(hasDelayed)return{pct:avg,status:'Delayed ⚠️',color:'var(--red)'};
-  if(avg>0)return{pct:avg,status:'On Track 🔵',color:'var(--blue)'};
-  return{pct:0,status:'Not Started',color:'var(--text2)'};
+  const avgPct=itemCount?Math.round(totalPct/itemCount):0;
+  if(allDone)return{pct:100,status:'All Completed ✅',dot:'🟢',color:'var(--green)'};
+  if(!ratioCount)return{pct:avgPct,status:'Not Started',dot:'⚪',color:'var(--text2)'};
+  const avgRatio=ratioSum/ratioCount;
+  if(avgRatio>1) return{pct:avgPct,status:'Very Healthy 🌟',dot:'🟢',color:'#1a7a2e'};
+  if(avgRatio>=0.99)return{pct:avgPct,status:'Healthy',dot:'🟢',color:'var(--green)'};
+  if(avgRatio>=0.8) return{pct:avgPct,status:'OK ⚡',dot:'🟡',color:'var(--gold)'};
+  return{pct:avgPct,status:'Unhealthy – Needs Attention 🚨',dot:'🔴',color:'var(--red)'};
 }
 
 function pageExecution(){
@@ -3012,7 +3050,7 @@ function ptRender(){
         <div style="width:${h.pct}%;height:8px;background:${h.color};border-radius:4px;transition:width 0.3s"></div>
       </div>
       <span style="font-weight:700;font-size:13px;color:${h.color}">${h.pct}%</span>
-      <span style="font-size:12px;color:${h.color}">${h.status}</span>
+      <span style="font-size:12px;color:${h.color}">${h.dot||''} ${h.status}</span>
     </div>`;
   }
   if(!tasks.length){
@@ -3038,9 +3076,9 @@ function ptRenderTaskCard(siteCode,task){
   return `<div class="card" style="margin-bottom:14px;border-left:4px solid ${taskH.color}">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:10px">
       <div style="flex:1;min-width:200px">
-        <div style="font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px">
+        <div style="font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           ${escHtml(task.title)}
-          <span style="font-size:11px;background:${taskH.color}22;color:${taskH.color};border-radius:8px;padding:2px 8px">${taskH.status}</span>
+          <span style="font-size:11px;background:${taskH.color}22;color:${taskH.color};border-radius:8px;padding:2px 8px;white-space:nowrap">${taskH.dot||''} ${taskH.status}</span>
         </div>
         ${task.desc?`<div style="font-size:12px;color:var(--text2);margin-top:3px">${escHtml(task.desc)}</div>`:''}
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;font-size:11px;color:var(--text2)">
@@ -3062,19 +3100,19 @@ function ptRenderTaskCard(siteCode,task){
   </div>`;
 }
 function ptOverallSubHealth(items){
-  let hasDelayed=false,allDone=true;
+  let ratioSum=0,ratioCount=0,allDone=true;
   items.forEach(i=>{
     const h=ptCalcHealth(i);
-    if(h.status==='delayed')hasDelayed=true;
-    if(h.status!=='done')allDone=false;
+    if(h.status!=='Completed ✅')allDone=false;
+    if(h.ratio!==null){ratioSum+=h.ratio;ratioCount++;}
   });
-  if(allDone)return{status:'Done ✅',color:'var(--green)'};
-  if(hasDelayed)return{status:'Delayed ⚠️',color:'var(--red)'};
-  const anyOngoing=items.some(i=>ptCalcHealth(i).status==='ongoing');
-  if(anyOngoing)return{status:'Ongoing 🔵',color:'var(--blue)'};
-  const anyNotStarted=items.some(i=>ptCalcHealth(i).status==='not-started'||ptCalcHealth(i).pct>0);
-  if(anyNotStarted)return{status:'In Progress',color:'var(--orange)'};
-  return{status:'Not Started',color:'var(--text2)'};
+  if(allDone)return{status:'Completed ✅',dot:'🟢',color:'var(--green)'};
+  if(!ratioCount)return{status:'Not Started',dot:'⚪',color:'var(--text2)'};
+  const avg=ratioSum/ratioCount;
+  if(avg>1) return{status:'Very Healthy 🌟',dot:'🟢',color:'#1a7a2e'};
+  if(avg>=0.99)return{status:'Healthy',dot:'🟢',color:'var(--green)'};
+  if(avg>=0.8) return{status:'OK ⚡',dot:'🟡',color:'var(--gold)'};
+  return{status:'Unhealthy – Needs Attention 🚨',dot:'🔴',color:'var(--red)'};
 }
 function ptExpectedEnd(startDate,durationDays){
   if(!startDate||!durationDays)return '-';
@@ -3092,17 +3130,21 @@ function ptRenderSubtaskRow(siteCode,taskId,sub){
   const done=h.done;const total=h.total;
   const actualEnd=ptActualEnd(sub);
   const expEnd=ptExpectedEnd(sub.startDate,sub.durationDays);
+  const ratioTxt=h.ratio!==null?` · Pace: <b style="color:${h.color}">${Math.round(h.ratio*100)}%</b>`:'';
   return `<div style="background:var(--bg2);border-radius:8px;padding:10px 12px;border-left:3px solid ${h.color}">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">
       <div style="flex:1;min-width:160px">
-        <div style="font-weight:600;font-size:13px">${escHtml(sub.title)}</div>
+        <div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          ${escHtml(sub.title)}
+          <span style="font-size:10px;background:${h.color}22;color:${h.color};border-radius:6px;padding:1px 7px;white-space:nowrap">${h.dot||''} ${h.status}</span>
+        </div>
         ${sub.desc?`<div style="font-size:11px;color:var(--text2);margin-top:2px">${escHtml(sub.desc)}</div>`:''}
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;font-size:11px;color:var(--text2)">
           ${sub.startDate?`<span>📅 ${sub.startDate}</span>`:''}
           ${sub.durationDays?`<span>⏳ ${sub.durationDays}d</span>`:''}
           ${sub.startDate&&sub.durationDays?`<span>📌 Exp: ${expEnd}</span>`:''}
           ${actualEnd?`<span style="color:var(--green)">✅ Done: ${actualEnd}</span>`:''}
-          <span style="color:${h.color};font-weight:700">${h.pct}%</span>
+          <span style="color:${h.color};font-weight:700">${h.pct}% done${ratioTxt}</span>
         </div>
       </div>
       <div style="text-align:right;min-width:100px">
@@ -3125,10 +3167,14 @@ function ptRenderItemBody(siteCode,item,taskId,subId){
   const h=ptCalcHealth(item);
   const done=h.done;const total=h.total;
   const actualEnd=ptActualEnd(item);
-  const expEnd=ptExpectedEnd(item.startDate,item.durationDays);
+  const ratioTxt=h.ratio!==null?`<span style="font-size:11px;color:${h.color};margin-left:8px">Pace: <b>${Math.round(h.ratio*100)}%</b> of expected</span>`:'';
   return `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
     <div>
       <div style="font-size:13px;color:var(--gold);font-weight:700">Progress: ${done} / ${total} ${escHtml(item.unit||'units')}</div>
+      <div style="margin-top:4px;display:flex;align-items:center;flex-wrap:wrap;gap:6px">
+        <span style="font-size:11px;background:${h.color}22;color:${h.color};border-radius:6px;padding:2px 8px">${h.dot||''} ${h.status}</span>
+        ${ratioTxt}
+      </div>
       ${actualEnd?`<div style="font-size:11px;color:var(--green);margin-top:2px">✅ Completed: ${actualEnd}</div>`:''}
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
