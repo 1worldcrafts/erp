@@ -473,7 +473,7 @@ const USERS={
   nazir:{name:'Nazir Ahmed',role:'Planning Engineer',dept:'Planning',hinglish:false,color:'#8e44ad',initials:'NA',attDefaultSite:'OFFICE'},
 };
 
-const SITES=[
+const DEFAULT_SITES=[
   {id:'dmrc-tkd',code:'DMRC-TKD',name:'DMRC TKD',people:'Ajay',status:'active',health:'green'},
   {id:'dmrc-tkrc',code:'DMRC-TKRC',name:'DMRC TKRC',people:'Umar',status:'active',health:'yellow'},
   {id:'lg-noida',code:'LG-NOIDA',name:'LG Gr Noida',people:'Naval',status:'active',health:'green'},
@@ -485,6 +485,11 @@ const SITES=[
   {id:'dabur-rnd',code:'DABUR-RND',name:'Dabur R&D (AMC)',people:'Suniel',status:'amc',health:'green'},
   {id:'dabur-alwar',code:'DABUR-ALW',name:'Dabur Alwar',people:'TBD',status:'upcoming',health:'gray'},
 ];
+// SITES is loaded from localStorage on startup; falls back to DEFAULT_SITES
+window.SITES=(()=>{ try{ const s=localStorage.getItem('1wc_sites'); if(s){ const parsed=JSON.parse(s); if(Array.isArray(parsed)&&parsed.length) return parsed; } } catch(e){} return DEFAULT_SITES.slice(); })();
+// Keep a const alias so legacy bare `SITES` references still work (points at same array object via getter)
+// Note: all new code should use window.SITES
+const SITES=window.SITES;
 
 const CASH_CATEGORIES=['Food','Room Rent','Advance','2nd Salary','Transportation','Consumables','Tool Repair/Purchase','Petrol/Diesel','Office Stationery','Site Stationery','Labour Welfare','Medical','Miscellaneous'];
 
@@ -497,9 +502,14 @@ try{const s=localStorage.getItem('1wc_custom_codes');if(s)CUSTOM_CODES=JSON.pars
 
 function saveCustomCodes(){try{localStorage.setItem('1wc_custom_codes',JSON.stringify(CUSTOM_CODES));}catch(e){}}
 
+function saveSites(){
+  try{ localStorage.setItem('1wc_sites', JSON.stringify(window.SITES)); }catch(e){}
+  if(window.fbDb){ window.fbDb.collection('1wc_stores').doc('sites').set({entries: window.SITES}).catch(e=>console.log('FB sites:',e)); }
+}
+
 // Returns all project code options for a select — project codes + dept codes + custom
 function getProjectCodeOptions(includeBlank=true){
-  const siteOpts=SITES.map(s=>`<option value="${s.code}">${s.code} – ${s.name}</option>`).join('');
+  const siteOpts=(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code} – ${s.name}</option>`).join('');
   const deptOpts=DEPT_CODES.map(d=>`<option value="${d}">🏢 ${d}</option>`).join('');
   const customOpts=CUSTOM_CODES.map(c=>`<option value="${c.code}">${c.code}${c.name?' – '+c.name:''}</option>`).join('');
   const blank=includeBlank?'<option value="">— Select Code —</option>':'';
@@ -1252,13 +1262,28 @@ async function syncAdhocTasks(){
     }
   }catch(e){console.log('sync adhoc:',e);}
 }
+async function syncSites(){
+  if(!window.fbDb)return;
+  try{
+    const doc=await window.fbDb.collection('1wc_stores').doc('sites').get();
+    if(doc.exists){
+      const cloud=doc.data().entries||[];
+      // merge: add any cloud sites not already in local
+      const merged=[...window.SITES];
+      cloud.forEach(s=>{ if(s&&s.code&&!merged.find(m=>m.code===s.code)) merged.push(s); });
+      window.SITES=merged;
+      saveSites();
+    }
+  }catch(e){ console.log('syncSites err:',e); }
+}
 // Run all syncs in background (called at login and on relevant page open)
 async function syncAllStores(){
   // Fire all syncs in parallel, don't block
   Promise.allSettled([
     syncSalesInvoices(),syncPettyCash(),syncPurchaseRegister(),
     syncStockItems(),syncContractors(),syncPipeline(),
-    syncDelegatedTasks(),syncSiteUpdates(),syncAdhocTasks()
+    syncDelegatedTasks(),syncSiteUpdates(),syncAdhocTasks(),
+    syncSites()
   ]).catch(()=>{});
 }
 
@@ -3888,13 +3913,8 @@ function ptOverallSiteHealth(siteCode){
 }
 
 function pageExecution(){
-  // Merge hardcoded SITES const with any dynamically added window.SITES entries
-  const baseSites=typeof SITES!=='undefined'?SITES:[];
-  const dynSites=window.SITES||[];
-  // Union by code: dynamic additions supplement the base list
-  const allSites=[...baseSites];
-  dynSites.forEach(ds=>{if(!allSites.find(s=>s.code===ds.code))allSites.push(ds);});
-  window.SITES=allSites; // keep window.SITES in sync
+  // window.SITES is the single source of truth (loaded from localStorage or DEFAULT_SITES at startup)
+  const allSites=window.SITES||[];
   const activeSites=allSites.filter(s=>s.status==='active'||s.status==='amc');
   window.PT_SITE=window.PT_SITE||( activeSites[0]?activeSites[0].code:'' );
   if(window.PT_SITE) ptLoad(window.PT_SITE);
@@ -4873,8 +4893,8 @@ function saveNewAttSite(){
   window.ATT_SITES.push({code,name});
   saveATTSites();
   if(!window.SITES)window.SITES=[];
-  if(!window.SITES.find(s=>s.code===code))window.SITES.push({code,name,status:'active'});
-  try{localStorage.setItem('1wc_sites',JSON.stringify(window.SITES));}catch(e){}
+  if(!window.SITES.find(s=>s.code===code))window.SITES.push({code,name,status:'active',health:'green'});
+  saveSites();
   closeModal();
   const sel=document.getElementById('att-site');
   if(sel){
@@ -4986,8 +5006,8 @@ function saveGlobalSite(){
   if(!code||!name){showToast('Fill code and name','info');return;}
   if(!window.SITES)window.SITES=[];
   if(window.SITES.find(s=>s.code===code)){showToast('Site code already exists','info');return;}
-  window.SITES.push({code,name,status});
-  try{localStorage.setItem('1wc_sites',JSON.stringify(window.SITES));}catch(e){}
+  window.SITES.push({code,name,status,health:'green'});
+  saveSites();
   // also sync to ATT_SITES
   if(!window.ATT_SITES)window.ATT_SITES=[];
   if(!window.ATT_SITES.find(s=>s.code===code))window.ATT_SITES.push({code,name});
@@ -5000,7 +5020,7 @@ function toggleSiteStatus(code){
   if(!window.SITES)return;
   const s=window.SITES.find(s=>s.code===code);
   if(s)s.status=s.status==='active'?'inactive':'active';
-  try{localStorage.setItem('1wc_sites',JSON.stringify(window.SITES));}catch(e){}
+  saveSites();
   pageProjectManager();
   showToast('Site status updated','info');
 }
@@ -5008,7 +5028,7 @@ function deleteGlobalSite(code){
   if(!confirm('Delete site '+code+'? This will not delete attendance data.'))return;
   window.SITES=(window.SITES||[]).filter(s=>s.code!==code);
   window.ATT_SITES=(window.ATT_SITES||[]).filter(s=>s.code!==code);
-  try{localStorage.setItem('1wc_sites',JSON.stringify(window.SITES));}catch(e){}
+  saveSites();
   saveATTSites();
   pageProjectManager();
   showToast('Site removed','info');
