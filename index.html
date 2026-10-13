@@ -22,6 +22,7 @@
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     console.log('Firebase initialized successfully');
     const db = firebase.firestore();
+    window.fbDb = db;
 
     window.fbSaveEOD = async function(data) {
       try {
@@ -623,12 +624,17 @@ const SOPs={
   ],
 };
 
-// Delegated tasks from Owner
-let DELEGATED_TASKS=[
+// Delegated tasks from Owner — persisted to localStorage + Firebase
+const _DELEGATED_SEED=[
   {id:'dt1',from:'prayas',to:'vinay',task:'Follow up on SGRH quote CRA-2609-VA-664 today – very high chance',priority:'high',date:'2026-09-27',done:false},
   {id:'dt2',from:'prayas',to:'priyanshu',task:'Get alternate vendor quote for Armaflex insulation – current vendor delayed',priority:'high',date:'2026-09-27',done:false},
   {id:'dt3',from:'prayas',to:'kuldeep',task:'Send payment confirmation to Perfetti client for Sep invoice',priority:'med',date:'2026-09-26',done:false},
 ];
+let DELEGATED_TASKS=(()=>{try{const s=localStorage.getItem('1wc_delegated');if(s)return JSON.parse(s);}catch(e){}return _DELEGATED_SEED;})();
+function saveDelegatedTasks(){
+  try{localStorage.setItem('1wc_delegated',JSON.stringify(DELEGATED_TASKS));}catch(e){}
+  if(window.fbDb){try{window.fbDb.collection('1wc_delegated').doc('data').set({entries:DELEGATED_TASKS}).catch(e=>console.log('FB delegated sync:',e));}catch(e){}}
+}
 
 // Sales pipeline data
 let SALES_PIPELINE=[
@@ -641,6 +647,10 @@ let SALES_PIPELINE=[
 let LOST_JOBS=[
   {id:'CRA-2609-VA-650',client:'Nirala Estate',desc:'Residential HVAC 20 flats',value:780000,reason:'Price – client went with lower bidder',lostDate:'2026-09-15'},
 ];
+// PIPELINE_STORE — persist SALES_PIPELINE to localStorage
+window.PIPELINE_STORE=(()=>{try{const s=localStorage.getItem('1wc_pipeline');if(s)return JSON.parse(s);}catch(e){}return null;})();
+if(window.PIPELINE_STORE)SALES_PIPELINE=window.PIPELINE_STORE;
+function savePipeline(){try{localStorage.setItem('1wc_pipeline',JSON.stringify(SALES_PIPELINE));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('pipeline').set({entries:SALES_PIPELINE}).catch(e=>console.log('FB pipeline:',e));}catch(e){}}}
 
 // Vendor Comparison data
 let VENDOR_COMPARISONS=[
@@ -719,7 +729,11 @@ function seedOfficeEmployees(){
 
 // QUOTED_JOBS
 window.QUOTED_JOBS=(()=>{try{const s=localStorage.getItem('1wc_quoted_jobs');if(s)return JSON.parse(s);}catch(e){}return SALES_PIPELINE.map(p=>({id:p.id,client:p.client,desc:p.desc,value:p.value||0,stage:p.stage,date:p.deadline||new Date().toISOString().split('T')[0]}));})();
-function saveQuotedJobs(){try{localStorage.setItem('1wc_quoted_jobs',JSON.stringify(window.QUOTED_JOBS));}catch(e){}}
+function saveQuotedJobs(){try{localStorage.setItem('1wc_quoted_jobs',JSON.stringify(window.QUOTED_JOBS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('quoted_jobs').set({entries:window.QUOTED_JOBS}).catch(e=>console.log('FB quoted_jobs:',e));}catch(e){}}}
+
+// ADHOC_TASKS — per-user object keyed by user id
+window.ADHOC_TASKS=(()=>{try{const s=localStorage.getItem('1wc_adhoc');if(s)return JSON.parse(s);}catch(e){}return {};})();
+function saveAdhocTasks(){try{localStorage.setItem('1wc_adhoc',JSON.stringify(window.ADHOC_TASKS));}catch(e){}}
 
 // LEDGER_ENTRIES
 window.LEDGER_ENTRIES=(()=>{try{const s=localStorage.getItem('1wc_ledger');if(s)return JSON.parse(s);}catch(e){}return[
@@ -728,7 +742,7 @@ window.LEDGER_ENTRIES=(()=>{try{const s=localStorage.getItem('1wc_ledger');if(s)
   {id:'L003',date:'2026-09-25',desc:'Petty cash – Site transport (Bijwasan)',project:'BIJWASAN-D',type:'Expense',amount:-4200,party:'Driver'},
   {id:'L004',date:'2026-09-24',desc:'Invoice raised – Godrej Nest RA Bill#2',project:'GODREJ-NEST',type:'Invoice',amount:860000,party:'Godrej Properties'},
 ];})();
-function saveLedger(){try{localStorage.setItem('1wc_ledger',JSON.stringify(window.LEDGER_ENTRIES));}catch(e){}}
+function saveLedger(){try{localStorage.setItem('1wc_ledger',JSON.stringify(window.LEDGER_ENTRIES));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('ledger').set({entries:window.LEDGER_ENTRIES}).catch(e=>console.log('FB ledger:',e));}catch(e){}}}
 
 // PROJECT_PL
 window.PROJECT_PL=(()=>{try{const s=localStorage.getItem('1wc_project_pl');if(s)return JSON.parse(s);}catch(e){}return{};})();
@@ -740,7 +754,7 @@ window.CONTRACTORS=(()=>{try{const s=localStorage.getItem('1wc_contractors');if(
   {id:'c002',name:'Mustaqueen',site:'Godrej Nest',totalBill:280000,advance:40000,formalSalary:22000,actualCash:55000},
   {id:'c003',name:'Parvez',site:'Bijwasan-D',totalBill:95000,advance:15000,formalSalary:15000,actualCash:32000},
 ];})();
-function saveContractors(){try{localStorage.setItem('1wc_contractors',JSON.stringify(window.CONTRACTORS));}catch(e){}}
+function saveContractors(){try{localStorage.setItem('1wc_contractors',JSON.stringify(window.CONTRACTORS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('contractors').set({entries:window.CONTRACTORS}).catch(e=>console.log('FB contractors:',e));}catch(e){}}}
 
 // PURCHASE_REQUESTS
 window.PURCHASE_REQUESTS=(()=>{try{const s=localStorage.getItem('1wc_prs');if(s)return JSON.parse(s);}catch(e){}return[
@@ -749,7 +763,7 @@ window.PURCHASE_REQUESTS=(()=>{try{const s=localStorage.getItem('1wc_prs');if(s)
   {id:'PR003',site:'GODREJ-NEST',siteName:'Godrej Nest',mat:'AHU Filter F7 (6 nos)',qty:'6 Nos',urgency:'low',by:'Vinay',date:'2026-09-25',status:'Ordered'},
   {id:'PR004',site:'BIJWASAN-D',siteName:'Bijwasan Ducting',mat:'GI Duct Sheet 24 Gauge',qty:'500 kg',urgency:'med',by:'Parvez',date:'2026-09-26',status:'PR Received'},
 ];})();
-function savePRs(){try{localStorage.setItem('1wc_prs',JSON.stringify(window.PURCHASE_REQUESTS));}catch(e){}}
+function savePRs(){try{localStorage.setItem('1wc_prs',JSON.stringify(window.PURCHASE_REQUESTS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('purchase_requests').set({entries:window.PURCHASE_REQUESTS}).catch(e=>console.log('FB prs:',e));}catch(e){}}}
 
 // VENDORS
 window.VENDORS=(()=>{try{const s=localStorage.getItem('1wc_vendors');if(s)return JSON.parse(s);}catch(e){}return[
@@ -762,7 +776,7 @@ window.VENDORS=(()=>{try{const s=localStorage.getItem('1wc_vendors');if(s)return
   {id:'v007',name:'ABB India',cat:'Electrical / Panels',city:'Gurgaon',rating:4,contact:'9811XXXXX7',email:''},
   {id:'v008',name:'Honeywell BMS',cat:'Controls / Sensors',city:'Delhi',rating:5,contact:'9811XXXXX8',email:''},
 ];})();
-function saveVendors(){try{localStorage.setItem('1wc_vendors',JSON.stringify(window.VENDORS));}catch(e){}}
+function saveVendors(){try{localStorage.setItem('1wc_vendors',JSON.stringify(window.VENDORS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('vendors').set({entries:window.VENDORS}).catch(e=>console.log('FB vendors:',e));}catch(e){}}}
 
 // VENDOR_COMPARISONS_LS
 window.VC_LIST=(()=>{try{const s=localStorage.getItem('1wc_vc');if(s)return JSON.parse(s);}catch(e){}return[
@@ -772,23 +786,23 @@ window.VC_LIST=(()=>{try{const s=localStorage.getItem('1wc_vc');if(s)return JSON
     {vendor:'Cool-Tech Engg',rating:4.5,technical:{make:'Daikin Split',cop:3.6,warranty:'2yr',delivery:'3 wk'},commercial:{price:4710000,gst:18,terms:'20% advance',validity:'45 days'}},
   ]},
 ];})();
-function saveVCList(){try{localStorage.setItem('1wc_vc',JSON.stringify(window.VC_LIST));}catch(e){}}
+function saveVCList(){try{localStorage.setItem('1wc_vc',JSON.stringify(window.VC_LIST));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('vc_list').set({entries:window.VC_LIST}).catch(e=>console.log('FB vc:',e));}catch(e){}}}
 
 // SALES_INVOICES
 window.SALES_INVOICES=(()=>{try{const s=localStorage.getItem('1wc_sales_invoices');if(s)return JSON.parse(s);}catch(e){}return[];})();
-function saveSalesInvoices(){try{localStorage.setItem('1wc_sales_invoices',JSON.stringify(window.SALES_INVOICES));}catch(e){}}
+function saveSalesInvoices(){try{localStorage.setItem('1wc_sales_invoices',JSON.stringify(window.SALES_INVOICES));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('sales_invoices').set({entries:window.SALES_INVOICES}).catch(e=>console.log('FB sales_invoices:',e));}catch(e){}}}
 
 // PETTY_CASH_ENTRIES
 window.PETTY_CASH_ENTRIES=(()=>{try{const s=localStorage.getItem('1wc_petty_cash');if(s)return JSON.parse(s);}catch(e){}return[];})();
-function savePettyCashEntries(){try{localStorage.setItem('1wc_petty_cash',JSON.stringify(window.PETTY_CASH_ENTRIES));}catch(e){}}
+function savePettyCashEntries(){try{localStorage.setItem('1wc_petty_cash',JSON.stringify(window.PETTY_CASH_ENTRIES));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('petty_cash').set({entries:window.PETTY_CASH_ENTRIES}).catch(e=>console.log('FB petty_cash:',e));}catch(e){}}}
 
 // PURCHASE_REGISTER
 window.PURCHASE_REGISTER=(()=>{try{const s=localStorage.getItem('1wc_purchase_register');if(s)return JSON.parse(s);}catch(e){}return[];})();
-function savePurchaseRegister(){try{localStorage.setItem('1wc_purchase_register',JSON.stringify(window.PURCHASE_REGISTER));}catch(e){}}
+function savePurchaseRegister(){try{localStorage.setItem('1wc_purchase_register',JSON.stringify(window.PURCHASE_REGISTER));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('purchase_register').set({entries:window.PURCHASE_REGISTER}).catch(e=>console.log('FB purchase_register:',e));}catch(e){}}}
 
 // STOCK_ITEMS
 window.STOCK_ITEMS=(()=>{try{const s=localStorage.getItem('1wc_stock');if(s)return JSON.parse(s);}catch(e){}return[];})();
-function saveStockItems(){try{localStorage.setItem('1wc_stock',JSON.stringify(window.STOCK_ITEMS));}catch(e){}}
+function saveStockItems(){try{localStorage.setItem('1wc_stock',JSON.stringify(window.STOCK_ITEMS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('stock').set({entries:window.STOCK_ITEMS}).catch(e=>console.log('FB stock:',e));}catch(e){}}}
 
 // PHOTO_UPLOADS
 window.PHOTO_UPLOADS=[];
@@ -1126,6 +1140,7 @@ function initApp(){
             const idx=DELEGATED_TASKS.findIndex(t=>t.id===ct.id);
             if(idx>=0){DELEGATED_TASKS[idx]=ct;}else{DELEGATED_TASKS.push(ct);}
           });
+          saveDelegatedTasks();
         }
       }catch(e){}
     }
@@ -1401,6 +1416,7 @@ async function submitDelegateTask(){
   if(!to){showToast('⚠️ Select person to assign','error');return;}
   const newTask={id:'dt'+Date.now(),from:'prayas',to,task,priority:pri,date:due,done:false};
   DELEGATED_TASKS.unshift(newTask);
+  saveDelegatedTasks();
   showToast('⏳ Saving to cloud...','info');
   if(window.fbSaveDelegatedTask){
     const ok=await window.fbSaveDelegatedTask(newTask);
@@ -1419,6 +1435,7 @@ async function markDelegatedDone(id){
     t.done=true;
     t.doneBy=CU;
     t.doneAt=new Date().toISOString();
+    saveDelegatedTasks();
     if(window.fbSaveDelegatedTask) await window.fbSaveDelegatedTask(t);
     showToast('✅ Task marked complete – Owner notified','success');
     showPage('dashboard');
@@ -1467,6 +1484,12 @@ function submitIncompleteReason(taskKey, taskText){
 
 // ======================== TASKS PAGE ========================
 function pageTasks(){
+  // Merge persisted adhoc tasks back into SOPs[CU] (avoids duplicates by id)
+  if(window.ADHOC_TASKS&&window.ADHOC_TASKS[CU]&&window.ADHOC_TASKS[CU].length){
+    if(!SOPs[CU])SOPs[CU]=[];
+    const existingIds=new Set(SOPs[CU].filter(t=>t.id).map(t=>t.id));
+    window.ADHOC_TASKS[CU].forEach(t=>{if(!existingIds.has(t.id)){SOPs[CU].push(t);}});
+  }
   const u=USERS[CU];
   const sop=SOPs[CU]||[];
   const myDelegated=DELEGATED_TASKS.filter(t=>t.to===CU&&!t.done);
@@ -1599,7 +1622,12 @@ function addAdhocTask(){
   const pri=document.getElementById('adhoc-pri')?.value||'med';
   const code=document.getElementById('adhoc-code')?.value||'';
   if(!SOPs[CU])SOPs[CU]=[];
-  SOPs[CU].push({text:v,priority:pri,code,adhoc:true});
+  const newTask={text:v,priority:pri,code,adhoc:true,id:'adhoc-'+Date.now()};
+  SOPs[CU].push(newTask);
+  // Persist to ADHOC_TASKS store
+  if(!window.ADHOC_TASKS[CU])window.ADHOC_TASKS[CU]=[];
+  window.ADHOC_TASKS[CU].push(newTask);
+  saveAdhocTasks();
   showPage('tasks');
   showToast('✅ Task added!','success');
 }
@@ -5422,9 +5450,13 @@ async function saveEnquiry(){
   showToast('⏳ Logging enquiry...','info');
   const enqData={client,project,contact,source,estimatedValue:+value||0};
   const ok=window.fbSaveEnquiry?await window.fbSaveEnquiry(enqData):false;
+  // Always push new enquiry to local SALES_PIPELINE and persist
+  const newPipelineEntry={id:'ENQ-'+Date.now(),client,desc:project,value:+value||0,stage:'Enquiry',days:0,deadline:new Date().toISOString().split('T')[0],by:CU||'',contact,source};
+  SALES_PIPELINE.push(newPipelineEntry);
+  savePipeline();
   if(ok){
     // Send notifications to owner, purchase and planning
-    if(window.fbSaveEnquiryNotification) window.fbSaveEnquiryNotification({...enqData,id:'ENQ-'+Date.now()});
+    if(window.fbSaveEnquiryNotification) window.fbSaveEnquiryNotification({...enqData,id:newPipelineEntry.id});
     showToast('✅ Enquiry logged! Owner, Purchase & Planning notified.','success');
     closeModal();
     // Reload pipeline if currently on sales page
@@ -5439,6 +5471,9 @@ async function saveStageUpdate(quoteId){
   const stage=document.getElementById('new-stage')?.value||'';
   const notes=document.querySelector('#modal-body textarea')?.value||'';
   showToast('⏳ Updating...','info');
+  // Update local SALES_PIPELINE entry and persist
+  const pIdx=SALES_PIPELINE.findIndex(p=>p.id===quoteId);
+  if(pIdx>=0){SALES_PIPELINE[pIdx]={...SALES_PIPELINE[pIdx],stage,notes};savePipeline();}
   const ok=window.fbSaveStageUpdate?await window.fbSaveStageUpdate(quoteId,stage,notes):false;
   if(ok){showToast('✅ Stage updated & saved to cloud!','success');closeModal();}
   else{showToast('✅ Stage updated (local)','success');closeModal();}
@@ -5452,9 +5487,14 @@ async function savePettyCash(){
   const date=document.getElementById('petty-date')?.value||new Date().toISOString().split('T')[0];
   if(!project||!category||!amount){showToast('⚠️ Project, Category and Amount required','info');return;}
   showToast('⏳ Saving...','info');
+  // Also push to local PETTY_CASH_ENTRIES store
+  const userName=(window.USERS&&window.CU&&window.USERS[window.CU])?window.USERS[window.CU].name:window.CU||'unknown';
+  const localEntry={id:'pc'+Date.now(),date,entryType:'debit',creditMode:'Cash',siteCode:project,projectCode:project,debitCategory:category,amount:+amount,paidTo:'',narration,addedBy:userName};
+  window.PETTY_CASH_ENTRIES.push(localEntry);
+  savePettyCashEntries();
   const ok=window.fbSaveCashEntry?await window.fbSaveCashEntry({type:'petty',project,category,amount:+amount,desc:narration,paidTo:'',date}):false;
   if(ok){showToast('✅ Petty cash entry saved to cloud!','success');}
-  else{showToast('⚠️ Saved locally (cloud sync failed)','info');}
+  else{showToast('✅ Saved locally (cloud sync pending)','info');}
 }
 
 function openContractorPayment(name,site){
@@ -5486,6 +5526,18 @@ async function saveContractorPayment(name,site){
   const notes=document.getElementById('cp-notes')?.value||'';
   if(!amount){showToast('⚠️ Amount required','info');return;}
   showToast('⏳ Saving...','info');
+  // Update contractor's advance in CONTRACTORS store and persist
+  const cIdx=window.CONTRACTORS.findIndex(c=>c.name===name&&c.site===site);
+  if(cIdx>=0){
+    const c=window.CONTRACTORS[cIdx];
+    const paid=+amount||0;
+    if(type==='Cash Advance'||type==='Bill Payment'||type==='Final Settlement'){
+      window.CONTRACTORS[cIdx]={...c,advance:(c.advance||0)+paid};
+    } else if(type==='Formal Salary (ESI/PF)'){
+      window.CONTRACTORS[cIdx]={...c,formalSalary:(c.formalSalary||0)+paid};
+    }
+    saveContractors();
+  }
   const ok=window.fbSaveCashEntry?await window.fbSaveCashEntry({type:'contractor',contractor:name,site,paymentType:type,amount:+amount,mode,notes,date}):false;
   if(ok){showToast('✅ Contractor payment saved to cloud!','success');closeModal();}
   else{showToast('✅ Payment saved (local)','success');closeModal();}
@@ -5939,6 +5991,7 @@ async function submitQuickDelegate(userKey){
   if(!task){showToast('Enter task description','error');return;}
   const newTask={id:'dt'+Date.now(),from:'prayas',to:userKey,task,priority:pri,date:due,done:false};
   DELEGATED_TASKS.unshift(newTask);
+  saveDelegatedTasks();
   if(window.fbSaveDelegatedTask){const ok=await window.fbSaveDelegatedTask(newTask);if(ok){showToast('✅ Task assigned to '+USERS[userKey]?.name+' & saved to cloud','success');}else{showToast('✅ Task assigned (local)','success');}}
   else{showToast('✅ Task assigned to '+USERS[userKey]?.name,'success');}
   closeModal();
