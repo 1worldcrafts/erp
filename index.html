@@ -491,6 +491,19 @@ window.SITES=(()=>{ try{ const s=localStorage.getItem('1wc_sites'); if(s){ const
 // Note: all new code should use window.SITES
 const SITES=window.SITES;
 
+// ── Site dropdown helpers ─────────────────────────────────────────────────────
+// siteOptions: for filter bars — first option is "All Sites"
+function siteOptions(selected=''){
+  return '<option value="">-- All Sites --</option>'+(window.SITES||[]).map(s=>`<option value="${s.code}"${s.code===selected?' selected':''}>${s.code} – ${s.name}</option>`).join('');
+}
+// siteOptionsRequired: for entry forms — first option is "Select Site" (blank value)
+function siteOptionsRequired(selected=''){
+  return '<option value="">-- Select Site --</option>'+
+    '<option value="WAREHOUSE"'+('WAREHOUSE'===selected?' selected':'')+'> WAREHOUSE</option>'+
+    (window.SITES||[]).map(s=>`<option value="${s.code}"${s.code===selected?' selected':''}>${s.code} – ${s.name}</option>`).join('');
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const CASH_CATEGORIES=['Food','Room Rent','Advance','2nd Salary','Transportation','Consumables','Tool Repair/Purchase','Petrol/Diesel','Office Stationery','Site Stationery','Labour Welfare','Medical','Miscellaneous'];
 
 // Department codes — for tasks not tied to a specific project
@@ -1454,7 +1467,7 @@ function pageDashboard(){
     <div class="card">
       <div class="card-title">Sites at a Glance</div>
       <div class="sites-list">${SITES.map(s=>`
-        <div class="site-row" onclick="openSiteModal('${s.id}')">
+        <div class="site-row" onclick="openSiteModal('${s.id||s.code}')">
           <div class="site-status" style="background:${s.health==='green'?'var(--green)':s.health==='yellow'?'var(--gold)':s.health==='red'?'var(--red)':'#666'}"></div>
           <div class="site-info"><div class="site-name">${s.name}</div><div class="site-people">${s.people}</div></div>
           <div style="text-align:right"><div class="site-badge">${s.status.toUpperCase()}</div>
@@ -1587,10 +1600,10 @@ function getSiteMySite(){
   const u=USERS[CU];
   return `<div class="card"><div class="card-title">${u.hinglish?'Mera Site':'My Site(s)'}</div>
     <div class="sites-list">${sites.map(s=>`
-      <div class="site-row" onclick="openSiteModal('${s.id}')">
+      <div class="site-row" onclick="openSiteModal('${s.id||s.code}')">
         <div class="site-status" style="background:${s.health==='green'?'var(--green)':s.health==='yellow'?'var(--gold)':'var(--red)'}"></div>
-        <div class="site-info"><div class="site-name">${s.name}</div><div class="site-people">${s.people}</div></div>
-        <button class="btn-primary btn-sm" onclick="event.stopPropagation();openSiteModal('${s.id}')">${u.hinglish?'Update Bhejo':'Update Site'}</button>
+        <div class="site-info"><div class="site-name">${s.name}</div><div class="site-people">${s.people||''}</div></div>
+        <button class="btn-primary btn-sm" onclick="event.stopPropagation();openSiteModal('${s.id||s.code}')">${u.hinglish?'Update Bhejo':'Update Site'}</button>
       </div>`).join('')}
     </div></div>`;
 }
@@ -1986,9 +1999,9 @@ function pageSites(){
       siteUpdates.sort((a,b)=>(b.submittedAt||b.date||'').localeCompare(a.submittedAt||a.date||''));
       const latest=siteUpdates[0];
       const latestLine=latest?`<div style="font-size:10px;color:var(--text2);margin-top:2px">Last: ${latest.date||''} by ${latest.submittedBy||'—'} — ${latest.overallProgress||0}% complete</div>`:'<div style="font-size:10px;color:var(--text2);margin-top:2px">No updates yet</div>';
-      return `<div class="site-row" onclick="openSiteModal('${s.id}')">
+      return `<div class="site-row" onclick="openSiteModal('${s.id||s.code}')">
         <div class="site-status" style="background:${hColor[s.health]}"></div>
-        <div class="site-info"><div class="site-name">${s.name}</div><div class="site-people">👷 ${s.people}</div>${latestLine}</div>
+        <div class="site-info"><div class="site-name">${s.name}</div><div class="site-people">👷 ${s.people||'TBD'}</div>${latestLine}</div>
         <div style="text-align:right">
           <div class="site-badge">${s.status.toUpperCase()}</div>
           <div style="font-size:10px;margin-top:3px">${s.code}</div>
@@ -2021,7 +2034,7 @@ function pageSites(){
               <span style="font-weight:700">${s.name}</span><span style="color:var(--red);font-size:12px;font-weight:700">⚠ No update yet</span>
             </div>
             <div style="font-size:13px;color:var(--text2);margin-top:8px">No site update submitted yet.</div>
-            <div class="btn-row" style="margin-top:8px"><button class="btn-primary btn-sm" onclick="openSiteModal('${s.id}')">Submit Update</button></div>
+            <div class="btn-row" style="margin-top:8px"><button class="btn-primary btn-sm" onclick="openSiteModal('${s.id||s.code}')">Submit Update</button></div>
           </div>`;
         }
       }).join('');
@@ -2077,11 +2090,18 @@ function pageSales(){
       <div class="stat-card"><div class="stat-label">Open Enquiries</div><div class="stat-value blue">${SALES_PIPELINE.filter(p=>p.stage==='Enquiry').length}</div></div>
       <div class="stat-card"><div class="stat-label">Quotes Sent</div><div class="stat-value orange">${SALES_PIPELINE.filter(p=>['Quote Sent','Follow-up','Negotiation'].includes(p.stage)).length}</div></div>
     </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+      <select id="pipe-filter-site" onchange="filterPipeline()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All Sites</option>${(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code}</option>`).join('')}
+      </select>
+      <input id="pipe-filter-search" oninput="filterPipeline()" placeholder="Search client…" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px;width:150px"/>
+    </div>
+    <div id="pipeline-cards-wrap">
     ${SALES_PIPELINE.map(p=>`
-    <div style="background:var(--navy2);border:1px solid ${p.days>7&&p.stage==='Follow-up'?'var(--red)':p.stage==='Enquiry'&&new Date(p.deadline)<new Date()?'var(--red)':'var(--border)'};border-radius:10px;padding:14px;margin-bottom:10px">
+    <div data-pipe-id="${p.id}" data-pipe-site="${p.siteCode||''}" data-pipe-client="${p.client||''}" style="background:var(--navy2);border:1px solid ${p.days>7&&p.stage==='Follow-up'?'var(--red)':p.stage==='Enquiry'&&new Date(p.deadline)<new Date()?'var(--red)':'var(--border)'};border-radius:10px;padding:14px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div>
-          <div style="font-size:13px;font-weight:700">${p.client}</div>
+          <div style="font-size:13px;font-weight:700">${p.client}${p.siteCode?`<span class="tag tag-blue" style="font-size:10px;margin-left:8px">${p.siteCode}</span>`:''}</div>
           <div style="font-size:12px;color:var(--text2);margin-top:2px">${p.desc}</div>
           <div style="font-size:11px;margin-top:4px">📋 ${p.id} · ${p.by}
           ${new Date(p.deadline)<new Date()?'<span class="tag tag-red" style="margin-left:6px">DEADLINE PASSED</span>':'<span style="font-size:10px;color:var(--text2);margin-left:6px">📅 Deadline: '+p.deadline+'</span>'}</div>
@@ -2098,6 +2118,7 @@ function pageSales(){
         <button class="btn-primary btn-xs" onclick="showPage('quotation')">Edit Quote</button>
       </div>
     </div>`).join('')}
+    </div><!-- end pipeline-cards-wrap -->
     <div id="cloud-enquiries-container" style="margin-top:10px"></div>
   </div>
   <div class="sales-tab" id="sales-quoted" style="display:none">
@@ -2107,6 +2128,12 @@ function pageSales(){
         <button class="btn-primary btn-sm" onclick="openAddQuote()">+ Add Quote</button>
         <button class="btn-secondary btn-sm" onclick="exportQuotedJobs()">📥 Export Excel</button>
       </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+      <select id="qj-filter-site" onchange="renderQuotedJobs()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All Sites</option>
+      </select>
+      <input id="qj-filter-proj" oninput="renderQuotedJobs()" placeholder="Search client/quote…" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px;width:160px"/>
     </div>
     <div id="quoted-jobs-table"></div>
     <div id="quoted-jobs-total" style="margin-top:12px;padding:12px;background:var(--navy2);border-radius:8px;font-size:13px"></div>
@@ -2136,11 +2163,20 @@ function renderQuotedJobs(){
   const tbl=document.getElementById('quoted-jobs-table');
   const tot=document.getElementById('quoted-jobs-total');
   if(!tbl)return;
-  const total=window.QUOTED_JOBS.reduce((a,b)=>a+(b.value||0),0);
-  tbl.innerHTML=`<table><thead><tr><th>Quote No.</th><th>Client</th><th>Description</th><th>Value (₹)</th><th>Stage</th><th>Date</th><th>Action</th></tr></thead>
-  <tbody>${window.QUOTED_JOBS.map(p=>`<tr>
+  // Populate site filter dynamically
+  const qjSiteSel=document.getElementById('qj-filter-site');
+  if(qjSiteSel&&qjSiteSel.options.length<=1){qjSiteSel.innerHTML='<option value="">All Sites</option>'+(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code}</option>`).join('');}
+  const siteF=document.getElementById('qj-filter-site')?.value||'';
+  const searchF=(document.getElementById('qj-filter-proj')?.value||'').trim().toLowerCase();
+  let jobs=window.QUOTED_JOBS.slice();
+  if(siteF)jobs=jobs.filter(p=>p.siteCode===siteF);
+  if(searchF)jobs=jobs.filter(p=>(p.client||'').toLowerCase().includes(searchF)||(p.id||'').toLowerCase().includes(searchF)||(p.desc||'').toLowerCase().includes(searchF));
+  const total=jobs.reduce((a,b)=>a+(b.value||0),0);
+  tbl.innerHTML=`<table><thead><tr><th>Quote No.</th><th>Client</th><th>Site</th><th>Description</th><th>Value (₹)</th><th>Stage</th><th>Date</th><th>Action</th></tr></thead>
+  <tbody>${jobs.map(p=>`<tr>
     <td style="color:var(--orange);font-weight:700">${p.id}</td>
     <td>${p.client}</td>
+    <td><span class="tag tag-blue" style="font-size:10px">${p.siteCode||''}</span></td>
     <td>${p.desc}</td>
     <td style="color:var(--green)">${p.value?'₹'+Number(p.value).toLocaleString('en-IN'):'TBD'}</td>
     <td><span class="tag tag-${p.stage==='Won'?'green':p.stage==='Negotiation'?'gold':'blue'}">${p.stage}</span></td>
@@ -2150,7 +2186,7 @@ function renderQuotedJobs(){
       <button class="btn-secondary btn-xs" style="color:var(--red)" onclick="deleteQuote('${p.id}')">🗑️</button>
     </td>
   </tr>`).join('')}</tbody></table>`;
-  if(tot) tot.innerHTML=`<strong>Total Quoted Value: </strong><span style="color:var(--green)">₹${total.toLocaleString('en-IN')}</span> · <span style="color:var(--text2)">${window.QUOTED_JOBS.length} quotes</span>`;
+  if(tot) tot.innerHTML=`<strong>Total Quoted Value: </strong><span style="color:var(--green)">₹${total.toLocaleString('en-IN')}</span> · <span style="color:var(--text2)">${jobs.length} quotes</span>`;
 }
 function openAddQuote(existing){
   const p=existing||{};
@@ -2159,6 +2195,10 @@ function openAddQuote(existing){
       <div class="form-row"><label>Quote No.</label><input id="q-id" value="${p.id||'CRA-'+Date.now()}" /></div>
       <div class="form-row"><label>Client</label><input id="q-client" value="${p.client||''}" /></div>
     </div>
+    <div class="row2">
+      <div class="form-row"><label>Site Code</label><select id="q-site">${siteOptionsRequired(p.siteCode||'')}</select></div>
+      <div class="form-row"><label>Date</label><input id="q-date" type="date" value="${p.date||new Date().toISOString().split('T')[0]}" /></div>
+    </div>
     <div class="form-row"><label>Description</label><textarea id="q-desc" rows="2">${p.desc||''}</textarea></div>
     <div class="row2">
       <div class="form-row"><label>Value (₹)</label><input id="q-value" type="number" value="${p.value||0}" /></div>
@@ -2166,13 +2206,13 @@ function openAddQuote(existing){
         <select id="q-stage">${['Enquiry','Quote Sent','Follow-up','Negotiation','Won','Lost'].map(s=>`<option${s===p.stage?' selected':''}>${s}</option>`).join('')}</select>
       </div>
     </div>
-    <div class="form-row"><label>Date</label><input id="q-date" type="date" value="${p.date||new Date().toISOString().split('T')[0]}" /></div>
     <div class="btn-row"><button class="btn-primary" onclick="saveQuote('${p.id||''}')">Save Quote</button></div>
   </div>`);
 }
 function saveQuote(existingId){
   const id=document.getElementById('q-id')?.value.trim();
   const client=document.getElementById('q-client')?.value.trim();
+  const siteCode=document.getElementById('q-site')?.value||'';
   const desc=document.getElementById('q-desc')?.value.trim();
   const value=parseFloat(document.getElementById('q-value')?.value)||0;
   const stage=document.getElementById('q-stage')?.value;
@@ -2180,9 +2220,9 @@ function saveQuote(existingId){
   if(!id||!client){showToast('Fill Quote No. and Client','info');return;}
   if(existingId){
     const idx=window.QUOTED_JOBS.findIndex(q=>q.id===existingId);
-    if(idx>=0)window.QUOTED_JOBS[idx]={id,client,desc,value,stage,date};
+    if(idx>=0)window.QUOTED_JOBS[idx]={id,client,siteCode,desc,value,stage,date};
   } else {
-    window.QUOTED_JOBS.push({id,client,desc,value,stage,date});
+    window.QUOTED_JOBS.push({id,client,siteCode,desc,value,stage,date});
   }
   saveQuotedJobs();
   closeModal();
@@ -2201,7 +2241,20 @@ function deleteQuote(id){
   showToast('Quote deleted','info');
 }
 function exportQuotedJobs(){
-  exportToExcel(window.QUOTED_JOBS.map(q=>({Quote_No:q.id,Client:q.client,Description:q.desc,Value:q.value,Stage:q.stage,Date:q.date})),'1WC_QuotedJobs','Quoted Jobs');
+  exportToExcel(window.QUOTED_JOBS.map(q=>({Quote_No:q.id,Client:q.client,Site:q.siteCode||'',Description:q.desc,Value:q.value,Stage:q.stage,Date:q.date})),'1WC_QuotedJobs','Quoted Jobs');
+}
+function filterPipeline(){
+  const siteF=document.getElementById('pipe-filter-site')?.value||'';
+  const search=(document.getElementById('pipe-filter-search')?.value||'').trim().toLowerCase();
+  const wrap=document.getElementById('pipeline-cards-wrap');
+  if(!wrap)return;
+  const cards=wrap.querySelectorAll('[data-pipe-id]');
+  cards.forEach(card=>{
+    const site=card.getAttribute('data-pipe-site')||'';
+    const client=(card.getAttribute('data-pipe-client')||'').toLowerCase();
+    const show=(!siteF||site===siteF)&&(!search||client.includes(search));
+    card.style.display=show?'':'none';
+  });
 }
 async function loadSalesPipelineFromCloud(){
   const container=document.getElementById('cloud-enquiries-container');
@@ -2233,21 +2286,24 @@ function openNewEnquiry(){
   <div class="eod-form">
     <div class="row2">
       <div class="form-row"><label>Client / Company</label><input id="enq-client" placeholder="Company or person name" /></div>
-      <div class="form-row"><label>Contact Number</label><input type="tel" placeholder="+91..." /></div>
+      <div class="form-row"><label>Contact Number</label><input id="enq-contact" type="tel" placeholder="+91..." /></div>
     </div>
     <div class="row2">
-      <div class="form-row"><label>Location / City</label><input placeholder="Project location" /></div>
-      <div class="form-row"><label>Quoting Deadline</label><input type="date" /></div>
+      <div class="form-row"><label>Location / City</label><input id="enq-location" placeholder="Project location" /></div>
+      <div class="form-row"><label>Quoting Deadline</label><input id="enq-deadline" type="date" /></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Site Code (which site/project)</label><select id="enq-site">${siteOptionsRequired()}</select></div>
+      <div class="form-row"><label>Enquiry Source</label>
+        <select id="enq-source"><option>Phone Call</option><option>WhatsApp</option><option>Email</option><option>Site Visit</option><option>Reference</option></select>
+      </div>
     </div>
     <div class="form-row"><label>Scope of Work</label><textarea id="enq-project" rows="3" placeholder="HVAC, Plumbing, Cold Storage, AHU installation..."></textarea></div>
     <div class="row2">
       <div class="form-row"><label>Approx Value (₹)</label><input id="enq-value" type="number" placeholder="Estimated project value" /></div>
       <div class="form-row"><label>Quote to be prepared by</label>
-        <select><option>Vinay Arya (VA)</option><option>Prayas Balyan (PB)</option></select>
+        <select id="enq-assignee"><option>Vinay Arya (VA)</option><option>Prayas Balyan (PB)</option></select>
       </div>
-    </div>
-    <div class="form-row"><label>Enquiry Source</label>
-      <select><option>Phone Call</option><option>WhatsApp</option><option>Email</option><option>Site Visit</option><option>Reference</option></select>
     </div>
     <div class="btn-row">
       <button class="btn-primary" onclick="saveEnquiry()">Log Enquiry + Notify Team</button>
@@ -2314,6 +2370,12 @@ function pageAccounts(){
         <button class="btn-secondary btn-sm" onclick="exportLedger()">📥 Excel</button>
       </div>
     </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+      <select id="ldg-filter-site" onchange="renderLedger()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All Sites</option>
+      </select>
+      <input id="ldg-filter-proj" oninput="renderLedger()" placeholder="Project code…" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px;width:130px"/>
+    </div>
     <div class="card" id="ledger-table-wrap"></div>
   </div>
 
@@ -2355,6 +2417,10 @@ function pageAccounts(){
       <select id="pc-filter-type" onchange="renderPettyCash()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
         <option value="">All Entries</option><option value="credit">Credit Only</option><option value="debit">Debit Only</option>
       </select>
+      <select id="pc-filter-site" onchange="renderPettyCash()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All Sites</option>
+      </select>
+      <input id="pc-filter-proj" oninput="renderPettyCash()" placeholder="Project code…" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px;width:130px"/>
     </div>
     <div class="card" id="pc-table-wrap"></div>
   </div>
@@ -2385,6 +2451,10 @@ function pageAccounts(){
       <select id="si-filter-status" onchange="renderSalesInvoices()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
         <option value="">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
       </select>
+      <select id="si-filter-site" onchange="renderSalesInvoices()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All Sites</option>
+      </select>
+      <input id="si-filter-proj" oninput="renderSalesInvoices()" placeholder="Project code…" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px;width:130px"/>
     </div>
     <div class="card" id="si-table-wrap"></div>
   </div>
@@ -2472,17 +2542,26 @@ async function submitEntry(){
 function renderLedger(){
   const wrap=document.getElementById('ledger-table-wrap');
   if(!wrap)return;
-  const receipts=window.LEDGER_ENTRIES.filter(e=>e.amount>0).reduce((a,b)=>a+b.amount,0);
-  const payments=window.LEDGER_ENTRIES.filter(e=>e.amount<0).reduce((a,b)=>a+Math.abs(b.amount),0);
+  // Populate site filter dynamically
+  const ldgSiteSel=document.getElementById('ldg-filter-site');
+  if(ldgSiteSel&&ldgSiteSel.options.length<=1){ldgSiteSel.innerHTML='<option value="">All Sites</option>'+(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code}</option>`).join('');}
+  const siteF=document.getElementById('ldg-filter-site')?.value||'';
+  const projF=(document.getElementById('ldg-filter-proj')?.value||'').trim().toLowerCase();
+  let entries=window.LEDGER_ENTRIES.slice();
+  if(siteF)entries=entries.filter(e=>e.siteCode===siteF);
+  if(projF)entries=entries.filter(e=>(e.project||'').toLowerCase().includes(projF));
+  const receipts=entries.filter(e=>e.amount>0).reduce((a,b)=>a+b.amount,0);
+  const payments=entries.filter(e=>e.amount<0).reduce((a,b)=>a+Math.abs(b.amount),0);
   const net=receipts-payments;
   const r=document.getElementById('ldg-receipts');const p=document.getElementById('ldg-payments');const n=document.getElementById('ldg-net');
   if(r)r.textContent='₹'+(receipts/100000).toFixed(1)+'L';
   if(p)p.textContent='₹'+(payments/100000).toFixed(1)+'L';
   if(n)n.textContent=(net>=0?'+':'')+'₹'+(net/100000).toFixed(1)+'L';
-  wrap.innerHTML=`<table><thead><tr><th>Date</th><th>Description</th><th>Project</th><th>Type</th><th>Amount (₹)</th><th>Party</th><th>Action</th></tr></thead>
-  <tbody>${window.LEDGER_ENTRIES.map(t=>`<tr>
+  wrap.innerHTML=`<table><thead><tr><th>Date</th><th>Description</th><th>Site</th><th>Project</th><th>Type</th><th>Amount (₹)</th><th>Party</th><th>Action</th></tr></thead>
+  <tbody>${entries.map(t=>`<tr>
     <td style="color:var(--text2);white-space:nowrap">${t.date}</td>
     <td>${t.desc}</td>
+    <td><span class="tag tag-blue" style="font-size:10px">${t.siteCode||'—'}</span></td>
     <td><span class="tag tag-orange" style="font-size:10px">${t.project||'—'}</span></td>
     <td><span class="tag tag-blue" style="font-size:10px">${t.type}</span></td>
     <td style="font-weight:700;color:${t.amount>=0?'var(--green)':'var(--red)'};text-align:right">${t.amount>=0?'+':''}₹${Math.abs(t.amount).toLocaleString('en-IN')}</td>
@@ -2504,10 +2583,13 @@ function openAddTransaction(existing){
     </div>
     <div class="form-row"><label>Description</label><input id="lt-desc" value="${t.desc||''}" placeholder="Transaction description"/></div>
     <div class="row2">
+      <div class="form-row"><label>Site Code</label><select id="lt-site">${siteOptionsRequired(t.siteCode||'')}</select></div>
       <div class="form-row"><label>Project Code</label><select id="lt-project">${getProjectCodeOptions()}</select></div>
-      <div class="form-row"><label>Amount (₹) — positive=receipt, negative=payment</label><input id="lt-amount" type="number" value="${t.amount||0}"/></div>
     </div>
-    <div class="form-row"><label>Party (Vendor/Client)</label><input id="lt-party" value="${t.party||''}"/></div>
+    <div class="row2">
+      <div class="form-row"><label>Amount (₹) — positive=receipt, negative=payment</label><input id="lt-amount" type="number" value="${t.amount||0}"/></div>
+      <div class="form-row"><label>Party (Vendor/Client)</label><input id="lt-party" value="${t.party||''}"/></div>
+    </div>
     <div class="btn-row"><button class="btn-primary" onclick="saveTransaction('${t.id||''}')">Save</button></div>
   </div>`);
   // set project select value
@@ -2517,15 +2599,16 @@ function saveTransaction(existingId){
   const date=document.getElementById('lt-date')?.value;
   const type=document.getElementById('lt-type')?.value;
   const desc=document.getElementById('lt-desc')?.value.trim();
+  const siteCode=document.getElementById('lt-site')?.value||'';
   const project=document.getElementById('lt-project')?.value;
   const amount=parseFloat(document.getElementById('lt-amount')?.value)||0;
   const party=document.getElementById('lt-party')?.value.trim();
   if(!desc){showToast('Enter description','info');return;}
   if(existingId){
     const idx=window.LEDGER_ENTRIES.findIndex(e=>e.id===existingId);
-    if(idx>=0)window.LEDGER_ENTRIES[idx]={id:existingId,date,desc,project,type,amount,party};
+    if(idx>=0)window.LEDGER_ENTRIES[idx]={id:existingId,date,desc,siteCode,project,type,amount,party};
   } else {
-    window.LEDGER_ENTRIES.push({id:'L'+Date.now(),date,desc,project,type,amount,party});
+    window.LEDGER_ENTRIES.push({id:'L'+Date.now(),date,desc,siteCode,project,type,amount,party});
   }
   saveLedger();closeModal();renderLedger();showToast('Transaction saved','success');
 }
@@ -2536,7 +2619,7 @@ function deleteTransaction(id){
   saveLedger();renderLedger();showToast('Deleted','info');
 }
 function exportLedger(){
-  exportToExcel(window.LEDGER_ENTRIES.map(e=>({Date:e.date,Description:e.desc,Project:e.project,Type:e.type,Amount:e.amount,Party:e.party})),'1WC_Ledger','Ledger');
+  exportToExcel(window.LEDGER_ENTRIES.map(e=>({Date:e.date,Description:e.desc,Site:e.siteCode||'',Project:e.project,Type:e.type,Amount:e.amount,Party:e.party})),'1WC_Ledger','Ledger');
 }
 function renderPL(){
   const wrap=document.getElementById('pl-table-wrap');
@@ -2755,6 +2838,10 @@ function pagePurchase(){
         <option value="10">October</option><option value="11">November</option><option value="12">December</option>
         <option value="01">January</option><option value="02">February</option><option value="03">March</option>
       </select>
+      <select id="preg-filter-site" onchange="renderPurchaseRegister()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All Sites</option>
+      </select>
+      <input id="preg-filter-proj" oninput="renderPurchaseRegister()" placeholder="Project code…" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px;width:130px"/>
     </div>
     <div class="card" id="preg-table-wrap"></div>
   </div>
@@ -2845,28 +2932,30 @@ function deletePR(id){
 function openNewPRInline(){
   openModal('New Purchase Request',`<div class="eod-form">
     <div class="row2">
-      <div class="form-row"><label>Site / Project</label><select id="pr-site2">${getProjectCodeOptions(false)}</select></div>
-      <div class="form-row"><label>Required By</label><input id="pr-date2" type="date"/></div>
+      <div class="form-row"><label>Site Code</label><select id="pr-site-code2">${siteOptionsRequired()}</select></div>
+      <div class="form-row"><label>Project Code</label><select id="pr-site2">${getProjectCodeOptions(false)}</select></div>
     </div>
-    <div class="form-row"><label>Material / Description</label><textarea id="pr-desc2" rows="2" placeholder="With specs..."></textarea></div>
     <div class="row2">
-      <div class="form-row"><label>Qty + Unit</label><input id="pr-qty2" placeholder="100 sqm, 5 Nos..."/></div>
+      <div class="form-row"><label>Required By</label><input id="pr-date2" type="date"/></div>
       <div class="form-row"><label>Urgency</label>
         <select id="pr-urg2"><option value="high">🔴 Urgent</option><option value="med" selected>🟡 Normal</option><option value="low">🟢 Low</option></select>
       </div>
     </div>
+    <div class="form-row"><label>Material / Description</label><textarea id="pr-desc2" rows="2" placeholder="With specs..."></textarea></div>
+    <div class="form-row"><label>Qty + Unit</label><input id="pr-qty2" placeholder="100 sqm, 5 Nos..."/></div>
     <div class="btn-row"><button class="btn-primary" onclick="saveNewPR()">Submit PR</button></div>
   </div>`);
 }
 function saveNewPR(){
+  const siteCode=document.getElementById('pr-site-code2')?.value||'';
   const site=document.getElementById('pr-site2')?.value;
   const date=document.getElementById('pr-date2')?.value;
   const desc=document.getElementById('pr-desc2')?.value.trim();
   const qty=document.getElementById('pr-qty2')?.value.trim();
   const urgency=document.getElementById('pr-urg2')?.value||'med';
-  if(!desc||!site){showToast('Fill site and material description','info');return;}
-  const siteObj=SITES.find(s=>s.code===site);
-  window.PURCHASE_REQUESTS.push({id:'PR'+Date.now(),site,siteName:siteObj?siteObj.name:site,mat:desc,qty:qty||'1 unit',urgency,by:(window.USERS&&window.USERS[CU])?window.USERS[CU].name:CU||'Me',date:date||new Date().toISOString().split('T')[0],status:'PR Received'});
+  if(!desc){showToast('Fill material description','info');return;}
+  const siteObj=(window.SITES||[]).find(s=>s.code===siteCode)||SITES.find(s=>s.code===site);
+  window.PURCHASE_REQUESTS.push({id:'PR'+Date.now(),siteCode,site:site||siteCode,siteName:siteObj?siteObj.name:(site||siteCode),mat:desc,qty:qty||'1 unit',urgency,by:(window.USERS&&window.USERS[CU])?window.USERS[CU].name:CU||'Me',date:date||new Date().toISOString().split('T')[0],status:'PR Received'});
   savePRs();closeModal();renderPRCards();showToast('PR submitted','success');
 }
 function renderVendorDB(){
@@ -2952,9 +3041,16 @@ function filterByFY(entries,fyEl,monthEl,dateField){
 function renderPettyCash(){
   const wrap=document.getElementById('pc-table-wrap');
   if(!wrap)return;
+  // Populate site filter dropdown dynamically
+  const siteSel=document.getElementById('pc-filter-site');
+  if(siteSel&&siteSel.options.length<=1){siteSel.innerHTML='<option value="">All Sites</option>'+(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code}</option>`).join('');}
   const typeF=document.getElementById('pc-filter-type')?.value||'';
+  const siteF=document.getElementById('pc-filter-site')?.value||'';
+  const projF=(document.getElementById('pc-filter-proj')?.value||'').trim().toLowerCase();
   let entries=filterByFY(window.PETTY_CASH_ENTRIES,'pc-filter-fy','pc-filter-month','date');
   if(typeF)entries=entries.filter(e=>e.entryType===typeF);
+  if(siteF)entries=entries.filter(e=>e.siteCode===siteF);
+  if(projF)entries=entries.filter(e=>(e.projectCode||'').toLowerCase().includes(projF));
   entries=entries.slice().sort((a,b)=>a.date>b.date?-1:1);
   const totalCredit=entries.filter(e=>e.entryType==='credit').reduce((s,e)=>s+(e.amount||0),0);
   const totalDebit=entries.filter(e=>e.entryType==='debit').reduce((s,e)=>s+(e.amount||0),0);
@@ -2984,7 +3080,7 @@ function renderPettyCash(){
 
 function openAddPettyCash(existing){
   const e=existing||{};
-  const siteOpts='<option value="">— Site —</option><option value="WAREHOUSE">WAREHOUSE</option>'+SITES.map(s=>`<option value="${s.code}"${e.siteCode===s.code?' selected':''}>${s.code}</option>`).join('');
+  const siteOpts=siteOptionsRequired(e.siteCode||'');
   openModal(existing?'Edit Petty Cash Entry':'Add Petty Cash Entry',`<div class="eod-form">
     <div class="row2">
       <div class="form-row"><label>Date</label><input id="pc-date" type="date" value="${e.date||new Date().toISOString().split('T')[0]}"/></div>
@@ -3059,9 +3155,16 @@ function exportPettyCash(){
 function renderSalesInvoices(){
   const wrap=document.getElementById('si-table-wrap');
   if(!wrap)return;
+  // Populate site filter dynamically
+  const siSiteSel=document.getElementById('si-filter-site');
+  if(siSiteSel&&siSiteSel.options.length<=1){siSiteSel.innerHTML='<option value="">All Sites</option>'+(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code}</option>`).join('');}
   let entries=filterByFY(window.SALES_INVOICES,'si-filter-fy','si-filter-month','date');
   const statusF=document.getElementById('si-filter-status')?.value||'';
+  const siteF=document.getElementById('si-filter-site')?.value||'';
+  const projF=(document.getElementById('si-filter-proj')?.value||'').trim().toLowerCase();
   if(statusF)entries=entries.filter(e=>e.paymentStatus===statusF);
+  if(siteF)entries=entries.filter(e=>e.siteCode===siteF);
+  if(projF)entries=entries.filter(e=>(e.projectCode||'').toLowerCase().includes(projF));
   entries=entries.slice().sort((a,b)=>a.date>b.date?-1:1);
   const totalInvoiced=entries.reduce((s,e)=>s+(e.totalValue||0),0);
   const totalReceived=entries.filter(e=>e.paymentStatus==='paid').reduce((s,e)=>s+(e.totalValue||0),0);
@@ -3072,7 +3175,7 @@ function renderSalesInvoices(){
   if(to)to.textContent=fmtINR(outstanding);
   if(!entries.length){wrap.innerHTML='<div style="text-align:center;padding:32px;color:var(--text2)">No sales invoices yet. Click "+ Add Invoice".</div>';return;}
   const today=new Date().toISOString().split('T')[0];
-  wrap.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Invoice No</th><th>Date</th><th>Client</th><th>Project</th><th>Basic</th><th>GST%</th><th>GST Amt</th><th>Total</th><th>Due Date</th><th>Status</th><th>Action</th></tr></thead>
+  wrap.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Invoice No</th><th>Date</th><th>Client</th><th>Site</th><th>Project</th><th>Basic</th><th>GST%</th><th>GST Amt</th><th>Total</th><th>Due Date</th><th>Status</th><th>Action</th></tr></thead>
   <tbody>${entries.map(e=>{
     const daysLeft=e.paymentDueDate?Math.ceil((new Date(e.paymentDueDate)-new Date(today))/(1000*86400)):null;
     const dueBadge=(e.paymentStatus==='pending'&&daysLeft!==null&&daysLeft<=3&&daysLeft>=0)?`<span style="background:var(--orange);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;margin-left:4px">⚠️ Due Soon</span>`:'';
@@ -3081,6 +3184,7 @@ function renderSalesInvoices(){
       <td style="font-weight:600">${escHtml(e.invoiceNo||'')}</td>
       <td style="white-space:nowrap">${e.date}</td>
       <td style="font-size:12px">${escHtml(e.clientName||'')}</td>
+      <td><span class="tag tag-blue" style="font-size:10px">${e.siteCode||''}</span></td>
       <td><span class="tag tag-blue" style="font-size:10px">${e.projectCode||''}</span></td>
       <td>${fmtINR(e.basicValue)}</td>
       <td style="text-align:center">${e.gstPct||0}%</td>
@@ -3105,7 +3209,11 @@ function openAddSalesInvoice(existing){
     </div>
     <div class="row2">
       <div class="form-row"><label>Client Name</label><input id="si-client" value="${e.clientName||''}" placeholder="Client company name"/></div>
+      <div class="form-row"><label>Site Code</label><select id="si-site">${siteOptionsRequired(e.siteCode||'')}</select></div>
+    </div>
+    <div class="row2">
       <div class="form-row"><label>Project Code</label><select id="si-proj">${getProjectCodeOptions()}</select></div>
+      <div style="flex:1"></div>
     </div>
     <div class="row2">
       <div class="form-row"><label>Basic Value (₹)</label><input id="si-basic" type="number" value="${e.basicValue||''}" oninput="calcSIGST()"/></div>
@@ -3149,6 +3257,7 @@ function saveSalesInvoice(existingId){
   const invoiceNo=document.getElementById('si-inv-no')?.value.trim();
   const date=document.getElementById('si-date')?.value;
   const clientName=document.getElementById('si-client')?.value.trim();
+  const siteCode=document.getElementById('si-site')?.value||'';
   const projectCode=document.getElementById('si-proj')?.value;
   const basicValue=parseFloat(document.getElementById('si-basic')?.value)||0;
   const gstPct=parseFloat(document.getElementById('si-gst-pct')?.value)||0;
@@ -3160,9 +3269,9 @@ function saveSalesInvoice(existingId){
   if(!invoiceNo||!date||!clientName){showToast('Invoice No, Date, and Client are required','error');return;}
   if(existingId){
     const idx=window.SALES_INVOICES.findIndex(e=>e.id===existingId);
-    if(idx>=0)window.SALES_INVOICES[idx]={...window.SALES_INVOICES[idx],invoiceNo,date,clientName,projectCode,basicValue,gstPct,gstAmt,totalValue,paymentDueDate,paymentStatus,notes};
+    if(idx>=0)window.SALES_INVOICES[idx]={...window.SALES_INVOICES[idx],invoiceNo,date,clientName,siteCode,projectCode,basicValue,gstPct,gstAmt,totalValue,paymentDueDate,paymentStatus,notes};
   }else{
-    window.SALES_INVOICES.push({id:'si'+Date.now(),invoiceNo,date,clientName,projectCode,basicValue,gstPct,gstAmt,totalValue,paymentDueDate,paymentStatus,notes});
+    window.SALES_INVOICES.push({id:'si'+Date.now(),invoiceNo,date,clientName,siteCode,projectCode,basicValue,gstPct,gstAmt,totalValue,paymentDueDate,paymentStatus,notes});
   }
   saveSalesInvoices();closeModal();renderSalesInvoices();showToast('Invoice saved','success');
 }
@@ -3180,14 +3289,21 @@ function deleteSalesInvoice(id){
   saveSalesInvoices();renderSalesInvoices();showToast('Deleted','info');
 }
 function exportSalesInvoices(){
-  exportToExcel(window.SALES_INVOICES.map(e=>({InvoiceNo:e.invoiceNo,Date:e.date,Client:e.clientName,Project:e.projectCode,BasicValue:e.basicValue,GSTPct:e.gstPct,GSTAmt:e.gstAmt,TotalValue:e.totalValue,DueDate:e.paymentDueDate,Status:e.paymentStatus,Notes:e.notes})),'1WC_SalesInvoices','Sales Invoices');
+  exportToExcel(window.SALES_INVOICES.map(e=>({InvoiceNo:e.invoiceNo,Date:e.date,Client:e.clientName,Site:e.siteCode||'',Project:e.projectCode,BasicValue:e.basicValue,GSTPct:e.gstPct,GSTAmt:e.gstAmt,TotalValue:e.totalValue,DueDate:e.paymentDueDate,Status:e.paymentStatus,Notes:e.notes})),'1WC_SalesInvoices','Sales Invoices');
 }
 
 // ======================== PURCHASE REGISTER ========================
 function renderPurchaseRegister(){
   const wrap=document.getElementById('preg-table-wrap');
   if(!wrap)return;
+  // Populate site filter dynamically
+  const pregSiteSel=document.getElementById('preg-filter-site');
+  if(pregSiteSel&&pregSiteSel.options.length<=1){pregSiteSel.innerHTML='<option value="">All Sites</option>'+(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code}</option>`).join('');}
+  const siteF=document.getElementById('preg-filter-site')?.value||'';
+  const projF=(document.getElementById('preg-filter-proj')?.value||'').trim().toLowerCase();
   let entries=filterByFY(window.PURCHASE_REGISTER,'preg-filter-fy','preg-filter-month','date');
+  if(siteF)entries=entries.filter(e=>e.siteCode===siteF);
+  if(projF)entries=entries.filter(e=>(e.projectCode||'').toLowerCase().includes(projF));
   entries=entries.slice().sort((a,b)=>a.date>b.date?-1:1);
   const totalVal=entries.reduce((s,e)=>s+(e.totalValue||0),0);
   const totalPaid=entries.reduce((s,e)=>s+(e.paidAmt||0),0);
@@ -3195,10 +3311,11 @@ function renderPurchaseRegister(){
   const t=document.getElementById('pr-reg-total');const p=document.getElementById('pr-reg-paid');const o=document.getElementById('pr-reg-outstanding');
   if(t)t.textContent=fmtINR(totalVal);if(p)p.textContent=fmtINR(totalPaid);if(o)o.textContent=fmtINR(outstanding);
   if(!entries.length){wrap.innerHTML='<div style="text-align:center;padding:32px;color:var(--text2)">No purchase entries yet.</div>';return;}
-  wrap.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Vendor</th><th>Project</th><th>Description</th><th>Basic</th><th>GST%</th><th>GST</th><th>Total</th><th>Terms</th><th>Due</th><th>Paid</th><th>Status</th><th>Action</th></tr></thead>
+  wrap.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Vendor</th><th>Site</th><th>Project</th><th>Description</th><th>Basic</th><th>GST%</th><th>GST</th><th>Total</th><th>Terms</th><th>Due</th><th>Paid</th><th>Status</th><th>Action</th></tr></thead>
   <tbody>${entries.map(e=>`<tr>
     <td style="white-space:nowrap">${e.date}</td>
     <td style="font-size:12px;font-weight:600">${escHtml(e.vendorName||'')}</td>
+    <td><span class="tag tag-blue" style="font-size:10px">${e.siteCode||''}</span></td>
     <td><span class="tag tag-blue" style="font-size:10px">${e.projectCode||''}</span></td>
     <td style="font-size:11px;max-width:130px">${escHtml(e.description||'')}</td>
     <td>${fmtINR(e.basicValue)}</td>
@@ -3230,8 +3347,12 @@ function openAddPurchaseRegEntry(existing){
       <div class="form-row"><label>Vendor Name</label><input id="preg-vendor" value="${e.vendorName||''}" placeholder="Vendor/Supplier"/></div>
     </div>
     <div class="row2">
+      <div class="form-row"><label>Site Code</label><select id="preg-site">${siteOptionsRequired(e.siteCode||'')}</select></div>
       <div class="form-row"><label>Project Code</label><select id="preg-proj">${getProjectCodeOptions()}</select></div>
+    </div>
+    <div class="row2">
       <div class="form-row"><label>Description</label><input id="preg-desc" value="${e.description||''}" placeholder="Item/service description"/></div>
+      <div style="flex:1"></div>
     </div>
     <div class="row2">
       <div class="form-row"><label>Basic Value (₹)</label><input id="preg-basic" type="number" value="${e.basicValue||''}" oninput="calcPRegGST()"/></div>
@@ -3278,6 +3399,7 @@ function calcPRegGST(){
 function savePurchaseRegEntry(existingId){
   const date=document.getElementById('preg-date')?.value;
   const vendorName=document.getElementById('preg-vendor')?.value.trim();
+  const siteCode=document.getElementById('preg-site')?.value||'';
   const projectCode=document.getElementById('preg-proj')?.value;
   const description=document.getElementById('preg-desc')?.value.trim();
   const basicValue=parseFloat(document.getElementById('preg-basic')?.value)||0;
@@ -3291,9 +3413,9 @@ function savePurchaseRegEntry(existingId){
   if(!date||!vendorName){showToast('Date and vendor name required','error');return;}
   if(existingId){
     const idx=window.PURCHASE_REGISTER.findIndex(e=>e.id===existingId);
-    if(idx>=0)window.PURCHASE_REGISTER[idx]={...window.PURCHASE_REGISTER[idx],date,vendorName,projectCode,description,basicValue,gstPct,gstAmt,totalValue,paymentTerms,paymentDueDate,paidAmt,paymentStatus};
+    if(idx>=0)window.PURCHASE_REGISTER[idx]={...window.PURCHASE_REGISTER[idx],date,vendorName,siteCode,projectCode,description,basicValue,gstPct,gstAmt,totalValue,paymentTerms,paymentDueDate,paidAmt,paymentStatus};
   }else{
-    window.PURCHASE_REGISTER.push({id:'pr'+Date.now(),date,vendorName,projectCode,description,basicValue,gstPct,gstAmt,totalValue,paymentTerms,paymentDueDate,paidAmt,paymentStatus});
+    window.PURCHASE_REGISTER.push({id:'pr'+Date.now(),date,vendorName,siteCode,projectCode,description,basicValue,gstPct,gstAmt,totalValue,paymentTerms,paymentDueDate,paidAmt,paymentStatus});
   }
   savePurchaseRegister();closeModal();renderPurchaseRegister();showToast('Purchase entry saved','success');
 }
@@ -3304,11 +3426,14 @@ function deletePurchaseReg(id){
   savePurchaseRegister();renderPurchaseRegister();showToast('Deleted','info');
 }
 function exportPurchaseRegister(){
-  exportToExcel(window.PURCHASE_REGISTER.map(e=>({Date:e.date,Vendor:e.vendorName,Project:e.projectCode,Description:e.description,Basic:e.basicValue,GSTPct:e.gstPct,GSTAmt:e.gstAmt,Total:e.totalValue,Terms:e.paymentTerms,DueDate:e.paymentDueDate,PaidAmt:e.paidAmt,Status:e.paymentStatus})),'1WC_PurchaseRegister','Purchase Register');
+  exportToExcel(window.PURCHASE_REGISTER.map(e=>({Date:e.date,Vendor:e.vendorName,Site:e.siteCode||'',Project:e.projectCode,Description:e.description,Basic:e.basicValue,GSTPct:e.gstPct,GSTAmt:e.gstAmt,Total:e.totalValue,Terms:e.paymentTerms,DueDate:e.paymentDueDate,PaidAmt:e.paidAmt,Status:e.paymentStatus})),'1WC_PurchaseRegister','Purchase Register');
 }
 
 // ======================== STOCK MANAGEMENT ========================
 function renderStock(){
+  // Repopulate stock site filter from window.SITES
+  const stockSiteSel=document.getElementById('stock-site-filter');
+  if(stockSiteSel&&stockSiteSel.options.length<=2){stockSiteSel.innerHTML='<option value="">All Sites</option><option value="WAREHOUSE"> WAREHOUSE</option>'+(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code}</option>`).join('');}
   const siteF=document.getElementById('stock-site-filter')?.value||'';
   const activeTab=document.querySelector('.stock-cat-tab:not([style*="none"])')?.id?.replace('stock-','').replace('-wrap','');
   // determine active category from visible tab
@@ -3336,7 +3461,7 @@ function renderStock(){
 }
 function openAddStockItem(existing){
   const e=existing||{};
-  const siteOpts='<option value="WAREHOUSE"${e.siteCode===\'WAREHOUSE\'?\' selected\':\'\'}>🏭 WAREHOUSE</option>'+SITES.map(s=>`<option value="${s.code}"${e.siteCode===s.code?' selected':''}>${s.code} – ${s.name}</option>`).join('');
+  // siteOpts variable retained for legacy reference but not used — form uses siteOptionsRequired below
   openModal(existing?'Edit Stock Item':'Add Stock Item',`<div class="eod-form">
     <div class="row2">
       <div class="form-row"><label>Item Name</label><input id="stk-name" value="${e.itemName||''}" placeholder="Item description"/></div>
@@ -3350,7 +3475,7 @@ function openAddStockItem(existing){
     </div>
     <div class="row2">
       <div class="form-row"><label>Site / Location</label>
-        <select id="stk-site"><option value="WAREHOUSE">🏭 WAREHOUSE</option>${SITES.map(s=>`<option value="${s.code}"${e.siteCode===s.code?' selected':''}>${s.code}</option>`).join('')}</select>
+        <select id="stk-site">${siteOptionsRequired(e.siteCode||'WAREHOUSE')}</select>
       </div>
       <div class="form-row"><label>Unit</label><input id="stk-unit" value="${e.unit||''}" placeholder="Nos / Kg / Sqm / Rft..."/></div>
     </div>
@@ -3581,6 +3706,10 @@ function pageRFQ(){
         <input type="file" id="rfq-file" style="display:none" onchange="showToast('File uploaded — AI parsing...','success')">
       </div>
       <div style="margin-top:12px">
+        <div class="row2">
+          <div class="form-row"><label>Site Code</label><select id="rfq-site">${siteOptionsRequired()}</select></div>
+          <div class="form-row"><label>Project Code</label><input id="rfq-proj" placeholder="e.g. DMRC-TKD-2025"/></div>
+        </div>
         <div class="form-row"><label>Or type enquiry summary</label>
           <textarea rows="4" placeholder="e.g. Supply & Install 12000 CFM AHU (Daikin), 200 TR Chiller, MS Ducting for G+3 building, site DMRC-TKD..."></textarea>
         </div>
@@ -5006,7 +5135,8 @@ function saveGlobalSite(){
   if(!code||!name){showToast('Fill code and name','info');return;}
   if(!window.SITES)window.SITES=[];
   if(window.SITES.find(s=>s.code===code)){showToast('Site code already exists','info');return;}
-  window.SITES.push({code,name,status,health:'green'});
+  const id=code.toLowerCase().replace(/[^a-z0-9]/g,'-');
+  window.SITES.push({id,code,name,status,health:'green',people:'TBD'});
   saveSites();
   // also sync to ATT_SITES
   if(!window.ATT_SITES)window.ATT_SITES=[];
@@ -5267,12 +5397,17 @@ function pagePlanning(){
   <div id="pl-tender" class="pl-tab" style="display:none">
     <div class="card">
       <div style="font-weight:700;margin-bottom:10px">Tender Pipeline</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+        <select id="tender-filter-site" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+          <option value="">-- All Sites --</option>${(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code}</option>`).join('')}
+        </select>
+      </div>
       <table class="data-table" style="font-size:13px">
-        <thead><tr><th>Tender</th><th>Client</th><th>Value Est.</th><th>Submission</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Tender</th><th>Client</th><th>Site</th><th>Value Est.</th><th>Submission</th><th>Status</th><th></th></tr></thead>
         <tbody>
-          <tr><td>HPCL Baroda HVAC</td><td>HPCL</td><td>₹85L</td><td>05-Oct-26</td><td><span class="tag tag-orange">Preparing</span></td><td><button class="btn-secondary btn-xs">Open</button></td></tr>
-          <tr><td>AIIMS Delhi Ext.</td><td>AIIMS</td><td>₹1.2Cr</td><td>15-Oct-26</td><td><span class="tag tag-blue">BOQ Review</span></td><td><button class="btn-secondary btn-xs">Open</button></td></tr>
-          <tr><td>IARI Cold Storage</td><td>IARI</td><td>₹32L</td><td>20-Oct-26</td><td><span class="tag tag-red">Delayed</span></td><td><button class="btn-secondary btn-xs">Open</button></td></tr>
+          <tr><td>HPCL Baroda HVAC</td><td>HPCL</td><td>—</td><td>₹85L</td><td>05-Oct-26</td><td><span class="tag tag-orange">Preparing</span></td><td><button class="btn-secondary btn-xs">Open</button></td></tr>
+          <tr><td>AIIMS Delhi Ext.</td><td>AIIMS</td><td>—</td><td>₹1.2Cr</td><td>15-Oct-26</td><td><span class="tag tag-blue">BOQ Review</span></td><td><button class="btn-secondary btn-xs">Open</button></td></tr>
+          <tr><td>IARI Cold Storage</td><td>IARI</td><td>—</td><td>₹32L</td><td>20-Oct-26</td><td><span class="tag tag-red">Delayed</span></td><td><button class="btn-secondary btn-xs">Open</button></td></tr>
         </tbody>
       </table>
       <button class="btn-primary btn-xs" style="margin-top:10px" onclick="showToast('New tender added','success')">+ New Tender</button>
@@ -5281,7 +5416,17 @@ function pagePlanning(){
   <div id="pl-boq" class="pl-tab" style="display:none">
     <div class="card">
       <div style="font-weight:700;margin-bottom:10px">BOQ Review & Costing</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+        <select id="boq-filter-site" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+          <option value="">-- All Sites --</option>${(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code} – ${s.name}</option>`).join('')}
+        </select>
+        <input id="boq-filter-proj" placeholder="Project code…" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px;width:140px"/>
+      </div>
       <div class="eod-form">
+        <div class="row2">
+          <div class="form-row"><label>Site Code</label><select id="boq-site">${(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code} – ${s.name}</option>`).join('')}</select></div>
+          <div class="form-row"><label>Project Code</label><input id="boq-proj-code" placeholder="e.g. DMRC-TKD-2025"/></div>
+        </div>
         <div class="form-row"><label>Upload BOQ (Excel/PDF)</label>
           <div class="upload-zone" onclick="document.getElementById('boq-file').click()" style="padding:20px;text-align:center;border:2px dashed var(--border);border-radius:8px;cursor:pointer">
             📊 Drop BOQ file here
@@ -5643,9 +5788,13 @@ async function saveSiteUpdate(siteId){
       cloudOk=true;
     }catch(e){console.log('site update firebase err:',e);}
   }
+  // Persist site health change
+  saveSites();
   if(cloudOk){showToast('✅ Site update saved to cloud.','success');}
   else{showToast('✅ Site update saved locally.','info');}
   closeModal();
+  // Re-render sites page so health dot + last-updated line refresh immediately
+  setTimeout(()=>showPage('sites'), 50);
 }
 
 async function loadOwnerEODView(){
@@ -5701,12 +5850,14 @@ async function saveEnquiry(){
   const value=document.getElementById('enq-value')?.value||'';
   const contact=document.getElementById('enq-contact')?.value||'';
   const source=document.getElementById('enq-source')?.value||'';
+  const siteCode=document.getElementById('enq-site')?.value||'';
+  const deadline=document.getElementById('enq-deadline')?.value||new Date().toISOString().split('T')[0];
   if(!client){showToast('⚠️ Client name required','error');return;}
   showToast('⏳ Logging enquiry...','info');
-  const enqData={client,project,contact,source,estimatedValue:+value||0};
+  const enqData={client,project,contact,source,siteCode,estimatedValue:+value||0};
   const ok=window.fbSaveEnquiry?await window.fbSaveEnquiry(enqData):false;
   // Always push new enquiry to local SALES_PIPELINE and persist
-  const newPipelineEntry={id:'ENQ-'+Date.now(),client,desc:project,value:+value||0,stage:'Enquiry',days:0,deadline:new Date().toISOString().split('T')[0],by:CU||'',contact,source};
+  const newPipelineEntry={id:'ENQ-'+Date.now(),client,desc:project,value:+value||0,stage:'Enquiry',days:0,deadline,siteCode,by:CU||'',contact,source};
   SALES_PIPELINE.push(newPipelineEntry);
   savePipeline();
   if(ok){
