@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -733,7 +733,11 @@ function saveQuotedJobs(){try{localStorage.setItem('1wc_quoted_jobs',JSON.string
 
 // ADHOC_TASKS — per-user object keyed by user id
 window.ADHOC_TASKS=(()=>{try{const s=localStorage.getItem('1wc_adhoc');if(s)return JSON.parse(s);}catch(e){}return {};})();
-function saveAdhocTasks(){try{localStorage.setItem('1wc_adhoc',JSON.stringify(window.ADHOC_TASKS));}catch(e){}}
+function saveAdhocTasks(){try{localStorage.setItem('1wc_adhoc',JSON.stringify(window.ADHOC_TASKS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('adhoc').set({entries:window.ADHOC_TASKS}).catch(e=>console.log('FB adhoc:',e));}catch(e){}}}
+
+// SITE_UPDATES — array of update objects per site
+window.SITE_UPDATES=(()=>{try{const s=localStorage.getItem('1wc_site_updates');if(s)return JSON.parse(s);}catch(e){}return[];})();
+function saveSiteUpdates(){try{localStorage.setItem('1wc_site_updates',JSON.stringify(window.SITE_UPDATES));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('site_updates').set({entries:window.SITE_UPDATES}).catch(e=>console.log('FB site_updates:',e));}catch(e){}}}
 
 // LEDGER_ENTRIES
 window.LEDGER_ENTRIES=(()=>{try{const s=localStorage.getItem('1wc_ledger');if(s)return JSON.parse(s);}catch(e){}return[
@@ -1101,6 +1105,163 @@ const NAV={
   ],
 };
 
+// ======================== CROSS-DEVICE CLOUD SYNC ========================
+// Pattern: load from Firestore, merge with localStorage (by id), save merged back to localStorage
+async function syncSalesInvoices(){
+  if(!window.fbDb)return;
+  try{
+    const doc=await window.fbDb.collection('1wc_stores').doc('sales_invoices').get();
+    if(doc.exists){
+      const cloudData=doc.data().entries||[];
+      const local=window.SALES_INVOICES||[];
+      const merged=[...cloudData];
+      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
+      window.SALES_INVOICES=merged;
+      saveSalesInvoices();
+    }
+  }catch(e){console.log('sync sales_invoices:',e);}
+}
+async function syncPettyCash(){
+  if(!window.fbDb)return;
+  try{
+    const doc=await window.fbDb.collection('1wc_stores').doc('petty_cash').get();
+    if(doc.exists){
+      const cloudData=doc.data().entries||[];
+      const local=window.PETTY_CASH_ENTRIES||[];
+      const merged=[...cloudData];
+      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
+      window.PETTY_CASH_ENTRIES=merged;
+      savePettyCashEntries();
+    }
+  }catch(e){console.log('sync petty_cash:',e);}
+}
+async function syncPurchaseRegister(){
+  if(!window.fbDb)return;
+  try{
+    const doc=await window.fbDb.collection('1wc_stores').doc('purchase_register').get();
+    if(doc.exists){
+      const cloudData=doc.data().entries||[];
+      const local=window.PURCHASE_REGISTER||[];
+      const merged=[...cloudData];
+      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
+      window.PURCHASE_REGISTER=merged;
+      savePurchaseRegister();
+    }
+  }catch(e){console.log('sync purchase_register:',e);}
+}
+async function syncStockItems(){
+  if(!window.fbDb)return;
+  try{
+    const doc=await window.fbDb.collection('1wc_stores').doc('stock').get();
+    if(doc.exists){
+      const cloudData=doc.data().entries||[];
+      const local=window.STOCK_ITEMS||[];
+      const merged=[...cloudData];
+      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
+      window.STOCK_ITEMS=merged;
+      saveStockItems();
+    }
+  }catch(e){console.log('sync stock:',e);}
+}
+async function syncContractors(){
+  if(!window.fbDb)return;
+  try{
+    const doc=await window.fbDb.collection('1wc_stores').doc('contractors').get();
+    if(doc.exists){
+      const cloudData=doc.data().entries||[];
+      const local=window.CONTRACTORS||[];
+      const merged=[...cloudData];
+      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
+      window.CONTRACTORS=merged;
+      saveContractors();
+    }
+  }catch(e){console.log('sync contractors:',e);}
+}
+async function syncPipeline(){
+  if(!window.fbDb)return;
+  try{
+    const doc=await window.fbDb.collection('1wc_stores').doc('pipeline').get();
+    if(doc.exists){
+      const cloudData=doc.data().entries||[];
+      const local=SALES_PIPELINE||[];
+      const merged=[...cloudData];
+      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
+      // Update the global SALES_PIPELINE
+      SALES_PIPELINE.length=0;
+      merged.forEach(i=>SALES_PIPELINE.push(i));
+      savePipeline();
+    }
+  }catch(e){console.log('sync pipeline:',e);}
+}
+async function syncDelegatedTasks(){
+  if(!window.fbDb)return;
+  try{
+    const doc=await window.fbDb.collection('1wc_delegated').doc('data').get();
+    if(doc.exists){
+      const cloudData=doc.data().entries||[];
+      const local=DELEGATED_TASKS||[];
+      const merged=[...cloudData];
+      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
+      DELEGATED_TASKS.length=0;
+      merged.forEach(i=>DELEGATED_TASKS.push(i));
+      saveDelegatedTasks();
+    }
+  }catch(e){console.log('sync delegated:',e);}
+}
+async function syncSiteUpdates(){
+  if(!window.fbDb)return;
+  try{
+    // Try structured store first
+    const doc=await window.fbDb.collection('1wc_stores').doc('site_updates').get();
+    if(doc.exists){
+      const cloudData=doc.data().entries||[];
+      const local=window.SITE_UPDATES||[];
+      const merged=[...cloudData];
+      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
+      window.SITE_UPDATES=merged;
+      saveSiteUpdates();
+      return;
+    }
+    // Fallback: load from collection (legacy individual docs)
+    const snap=await window.fbDb.collection('1wc_site_updates').get();
+    if(!snap.empty){
+      const cloudData=snap.docs.map(d=>({id:d.id,...d.data()}));
+      const local=window.SITE_UPDATES||[];
+      const merged=[...cloudData];
+      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
+      window.SITE_UPDATES=merged;
+      saveSiteUpdates();
+    }
+  }catch(e){console.log('sync site_updates:',e);}
+}
+async function syncAdhocTasks(){
+  if(!window.fbDb)return;
+  try{
+    const doc=await window.fbDb.collection('1wc_stores').doc('adhoc').get();
+    if(doc.exists){
+      const cloudData=doc.data().entries||{};
+      const local=window.ADHOC_TASKS||{};
+      // Merge per-user arrays
+      const merged={...cloudData};
+      Object.keys(local).forEach(user=>{
+        if(!merged[user])merged[user]=[];
+        local[user].forEach(task=>{if(!merged[user].find(c=>c.id===task.id))merged[user].push(task);});
+      });
+      window.ADHOC_TASKS=merged;
+      saveAdhocTasks();
+    }
+  }catch(e){console.log('sync adhoc:',e);}
+}
+// Run all syncs in background (called at login and on relevant page open)
+async function syncAllStores(){
+  // Fire all syncs in parallel, don't block
+  Promise.allSettled([
+    syncSalesInvoices(),syncPettyCash(),syncPurchaseRegister(),
+    syncStockItems(),syncContractors(),syncPipeline(),
+    syncDelegatedTasks(),syncSiteUpdates(),syncAdhocTasks()
+  ]).catch(()=>{});
+}
+
 // ======================== LOGIN / LOGOUT ========================
 function doLogin(){
   const sel=document.getElementById('user-select').value;
@@ -1131,6 +1292,8 @@ function initApp(){
   // Load delegated tasks and notifications from Firebase then show dashboard
   window.ENQUIRY_NOTIFICATIONS=[];
   async function loadAndShow(){
+    // 0. Background sync all stores from Firebase (cross-device)
+    syncAllStores().catch(()=>{});
     // 1. Load delegated tasks
     if(window.fbLoadDelegatedTasks){
       try{
@@ -1202,10 +1365,10 @@ function showPage(id){
     case 'dashboard': content.innerHTML=pageDashboard();break;
     case 'tasks': content.innerHTML=pageTasks();break;
     case 'eod': content.innerHTML=pageEOD();break;
-    case 'sites': content.innerHTML=pageSites();break;
-    case 'sales': content.innerHTML=pageSales(); loadSalesPipelineFromCloud(); renderQuotedJobs(); break;
-    case 'accounts': content.innerHTML=pageAccounts(); setTimeout(()=>{renderLedger();renderPLAuto();renderContractors();renderPettyCash();renderSalesInvoices();},0); break;
-    case 'purchase': content.innerHTML=pagePurchase(); setTimeout(()=>{renderPRCards();renderVendorDB();renderPurchaseRegister();renderStock();},0); break;
+    case 'sites': syncSiteUpdates().then(()=>{content.innerHTML=pageSites();}).catch(()=>{content.innerHTML=pageSites();}); break;
+    case 'sales': syncPipeline().then(()=>{content.innerHTML=pageSales();loadSalesPipelineFromCloud();renderQuotedJobs();}).catch(()=>{content.innerHTML=pageSales();loadSalesPipelineFromCloud();renderQuotedJobs();}); break;
+    case 'accounts': content.innerHTML=pageAccounts(); setTimeout(()=>{Promise.allSettled([syncSalesInvoices(),syncPettyCash(),syncContractors()]).finally(()=>{renderLedger();renderPLAuto();renderContractors();renderPettyCash();renderSalesInvoices();});},0); break;
+    case 'purchase': content.innerHTML=pagePurchase(); setTimeout(()=>{Promise.allSettled([syncPurchaseRegister(),syncStockItems()]).finally(()=>{renderPRCards();renderVendorDB();renderPurchaseRegister();renderStock();});},0); break;
     case 'team-status': pageTeamStatus();break;
     case 'alerts': pageAlerts();break;
     case 'eod-owner': pageOwnerEODs().catch(e=>{c.innerHTML='<div class="card"><p style="color:var(--red)">Failed to load EOD reports. Check connection.</p></div>';console.error(e);});break;
@@ -1793,34 +1956,51 @@ function pageSites(){
   </div>
   <div class="site-tab" id="all-sites">
     <div class="sites-list">
-    ${SITES.map(s=>`<div class="site-row" onclick="openSiteModal('${s.id}')">
-      <div class="site-status" style="background:${hColor[s.health]}"></div>
-      <div class="site-info"><div class="site-name">${s.name}</div><div class="site-people">👷 ${s.people}</div></div>
-      <div style="text-align:right">
-        <div class="site-badge">${s.status.toUpperCase()}</div>
-        <div style="font-size:10px;margin-top:3px">${s.code}</div>
-      </div></div>`).join('')}
+    ${SITES.map(s=>{
+      const siteUpdates=(window.SITE_UPDATES||[]).filter(u=>u.siteId===s.id||u.siteId===s.code);
+      siteUpdates.sort((a,b)=>(b.submittedAt||b.date||'').localeCompare(a.submittedAt||a.date||''));
+      const latest=siteUpdates[0];
+      const latestLine=latest?`<div style="font-size:10px;color:var(--text2);margin-top:2px">Last: ${latest.date||''} by ${latest.submittedBy||'—'} — ${latest.overallProgress||0}% complete</div>`:'<div style="font-size:10px;color:var(--text2);margin-top:2px">No updates yet</div>';
+      return `<div class="site-row" onclick="openSiteModal('${s.id}')">
+        <div class="site-status" style="background:${hColor[s.health]}"></div>
+        <div class="site-info"><div class="site-name">${s.name}</div><div class="site-people">👷 ${s.people}</div>${latestLine}</div>
+        <div style="text-align:right">
+          <div class="site-badge">${s.status.toUpperCase()}</div>
+          <div style="font-size:10px;margin-top:3px">${s.code}</div>
+        </div></div>`;
+    }).join('')}
     </div>
   </div>
   <div class="site-tab" id="site-updates" style="display:none">
-    ${['DMRC TKD','Perfetti Rudrapur','Bijwasan Plumbing'].map((name,i)=>`
-    <div class="card" style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-weight:700">${name}</span>
-        <span style="color:var(--green);font-size:12px;font-weight:700">✓ Updated ${i===0?'2h':'4h'} ago</span>
-      </div>
-      <div style="font-size:13px;color:var(--text2);margin-top:8px">${['Ajay: Ducting complete Floor 2, started Floor 3. 6 labours present.','Rohtash: Chiller piping 70% done. Insulation material req sent to Purchase.','Rehmat: Plumbing work 85% complete. Pressure test scheduled tomorrow.'][i]}</div>
-      <div style="margin-top:8px;display:flex;gap:6px">
-        <div style="width:56px;height:42px;background:var(--navy2);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:20px">📷</div>
-        <div style="width:56px;height:42px;background:var(--navy2);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:20px">📷</div>
-      </div>
-    </div>`).join('')}
-    <div class="card" style="border-color:var(--red)">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-weight:700">DMRC TKRC</span><span style="color:var(--red);font-size:12px;font-weight:700">⚠ Not yet</span>
-      </div>
-      <div style="font-size:13px;color:var(--text2);margin-top:8px">Umar has not submitted today's update.</div>
-    </div>
+    ${(()=>{
+      const today=new Date().toISOString().split('T')[0];
+      const allUpdates=(window.SITE_UPDATES||[]);
+      const siteUpdatesMap={};
+      allUpdates.forEach(u=>{const key=u.siteId;if(!siteUpdatesMap[key]||u.submittedAt>siteUpdatesMap[key].submittedAt)siteUpdatesMap[key]=u;});
+      return SITES.filter(s=>s.status!=='upcoming').map(s=>{
+        const lu=siteUpdatesMap[s.id]||siteUpdatesMap[s.code];
+        if(lu){
+          const isToday=lu.date===today;
+          return `<div class="card" style="margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-weight:700">${s.name}</span>
+              <span style="color:${isToday?'var(--green)':'var(--gold)'};font-size:12px;font-weight:700">${isToday?'✓ Updated today':'📅 '+lu.date}</span>
+            </div>
+            <div style="font-size:13px;color:var(--text2);margin-top:6px">${lu.submittedBy||'—'}: ${lu.workDone||''}</div>
+            ${lu.issues?`<div style="font-size:12px;color:var(--red);margin-top:4px">⚠️ ${lu.issues}</div>`:''}
+            <div style="font-size:11px;margin-top:4px">Overall: <strong>${lu.overallProgress||0}%</strong> · 👷 ${lu.manpower||0} workers · Material: ${lu.materialStatus||'OK'}</div>
+          </div>`;
+        } else {
+          return `<div class="card" style="border-color:var(--red);margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-weight:700">${s.name}</span><span style="color:var(--red);font-size:12px;font-weight:700">⚠ No update yet</span>
+            </div>
+            <div style="font-size:13px;color:var(--text2);margin-top:8px">No site update submitted yet.</div>
+            <div class="btn-row" style="margin-top:8px"><button class="btn-primary btn-sm" onclick="openSiteModal('${s.id}')">Submit Update</button></div>
+          </div>`;
+        }
+      }).join('');
+    })()}
   </div>
   <div class="site-tab" id="site-health" style="display:none">
     <div class="info-box">🤖 AI analyses site health based on: timeline deviation, EOD submission rate, material delays, billing status</div>
@@ -5342,54 +5522,109 @@ function generateQuoteNo(){
 function openSiteModal(siteId){
   const site=SITES.find(s=>s.id===siteId||s.code===siteId);
   if(!site) return;
+  // Build update history for this site
+  const siteUpdates=(window.SITE_UPDATES||[]).filter(u=>u.siteId===siteId||u.siteId===(site.code||siteId));
+  siteUpdates.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const historyHtml=siteUpdates.length?`
+    <div style="margin-top:16px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text2)">📋 Update History (${siteUpdates.length})</div>
+      ${siteUpdates.slice(0,10).map(u=>`
+        <div style="background:var(--navy2);border-radius:8px;padding:10px;margin-bottom:8px;border-left:3px solid var(--${u.health==='red'?'red':u.health==='yellow'?'gold':'green'})">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span style="font-size:12px;font-weight:700">${u.submittedBy||u.userName||'—'} · ${u.date||''}</span>
+            <span style="font-size:12px;color:var(--green);font-weight:700">${u.overallProgress||''}%</span>
+          </div>
+          <div style="font-size:12px;color:var(--text2)">${u.workDone||u.updateText||''}</div>
+          ${u.issues?`<div style="font-size:12px;color:var(--red);margin-top:3px">⚠️ ${u.issues}</div>`:''}
+          <div style="font-size:11px;color:var(--text2);margin-top:3px">👷 ${u.manpower||0} workers · Material: ${u.materialStatus||'OK'}</div>
+        </div>`).join('')}
+    </div>` : '<div style="color:var(--text2);font-size:12px;margin-top:12px">No updates yet for this site.</div>';
   openModal(`📍 ${site.name} — Site Update`,`
   <div class="eod-form">
     <div class="row2">
       <div class="form-row"><label>Health Status</label>
-        <select onchange="(SITES.find(s=>s.id==='${siteId}').health=this.value)">
+        <select id="su-health">
           <option value="green" ${site.health==='green'?'selected':''}>🟢 On Track</option>
           <option value="yellow" ${site.health==='yellow'?'selected':''}>🟡 Attention Needed</option>
           <option value="red" ${site.health==='red'?'selected':''}>🔴 Critical Issue</option>
         </select>
       </div>
-      <div class="form-row"><label>Date</label><input type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
+      <div class="form-row"><label>Date</label><input id="su-date" type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
     </div>
-    <div class="form-row"><label>Today's Progress</label><textarea rows="2" placeholder="What was done today..."></textarea></div>
-    <div class="form-row"><label>Issues / Blockers</label><textarea rows="2" placeholder="Any problems..."></textarea></div>
-    <div class="form-row"><label>Manpower Today</label><input type="number" placeholder="12"/></div>
-    <div class="form-row"><label>Photo</label>
-      <div class="upload-zone" onclick="document.getElementById('site-upd-photo').click()" style="padding:12px;text-align:center;border:2px dashed var(--border);border-radius:8px;cursor:pointer">
-        📷 Upload Site Photo
-        <input type="file" id="site-upd-photo" accept="image/*" style="display:none" onchange="showToast('Photo uploaded','success')">
+    <div class="form-row"><label>Overall Progress %</label><input id="su-overall-pct" type="number" min="0" max="100" placeholder="65"/></div>
+    <div style="font-size:12px;font-weight:700;margin:8px 0 4px;color:var(--text2)">Trade-wise Progress %</div>
+    <div class="row2">
+      <div class="form-row"><label>Civil</label><input id="su-civil" type="number" min="0" max="100" placeholder="0"/></div>
+      <div class="form-row"><label>HVAC Ducting</label><input id="su-ducting" type="number" min="0" max="100" placeholder="0"/></div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>HVAC Piping</label><input id="su-piping" type="number" min="0" max="100" placeholder="0"/></div>
+      <div class="form-row"><label>Electrical</label><input id="su-elec" type="number" min="0" max="100" placeholder="0"/></div>
+    </div>
+    <div class="form-row"><label>Controls / BMS</label><input id="su-bms" type="number" min="0" max="100" placeholder="0"/></div>
+    <div class="form-row"><label>Today's Work Done</label><textarea id="su-work" rows="2" placeholder="What was done today..."></textarea></div>
+    <div class="form-row"><label>Issues / Blockers</label><textarea id="su-issues" rows="2" placeholder="Any problems or blockers..."></textarea></div>
+    <div class="row2">
+      <div class="form-row"><label>Manpower Present</label><input id="su-manpower" type="number" placeholder="12"/></div>
+      <div class="form-row"><label>Material Status</label>
+        <select id="su-material">
+          <option value="OK">OK — No shortage</option>
+          <option value="Shortage">Shortage — PR raised</option>
+          <option value="Critical">Critical — Work stopped</option>
+        </select>
       </div>
     </div>
+    <div class="form-row"><label>Next Day Plan</label><textarea id="su-nextday" rows="2" placeholder="What is planned for tomorrow..."></textarea></div>
     <div class="btn-row">
       <button class="btn-primary" onclick="saveSiteUpdate('${siteId}')">Submit Update</button>
     </div>
-  </div>`);
+  </div>
+  ${historyHtml}`);
 }
 // ===================== FIREBASE-WIRED ACTIONS =====================
 async function saveSiteUpdate(siteId){
-  const modal=document.getElementById('modal-overlay')||document.getElementById('modal');
-  const selects=modal?modal.querySelectorAll('select'):[];
-  const textareas=modal?modal.querySelectorAll('textarea'):[];
-  const inputs=modal?modal.querySelectorAll('input[type=number]'):[];
-  const health=selects[0]?.value||'green';
-  const progress=textareas[0]?.value||'';
-  const issues=textareas[1]?.value||'';
-  const manpower=inputs[0]?.value||'';
-  if(!progress){showToast('⚠️ Please fill today\'s progress','info');return;}
-  // Update local health
-  const site=SITES.find(s=>s.id===siteId);
-  if(site) site.health=health;
+  const health=document.getElementById('su-health')?.value||'green';
+  const date=document.getElementById('su-date')?.value||new Date().toISOString().split('T')[0];
+  const overallProgress=parseInt(document.getElementById('su-overall-pct')?.value||'0')||0;
+  const civil=parseInt(document.getElementById('su-civil')?.value||'0')||0;
+  const ducting=parseInt(document.getElementById('su-ducting')?.value||'0')||0;
+  const piping=parseInt(document.getElementById('su-piping')?.value||'0')||0;
+  const elec=parseInt(document.getElementById('su-elec')?.value||'0')||0;
+  const bms=parseInt(document.getElementById('su-bms')?.value||'0')||0;
+  const workDone=document.getElementById('su-work')?.value||'';
+  const issues=document.getElementById('su-issues')?.value||'';
+  const manpower=parseInt(document.getElementById('su-manpower')?.value||'0')||0;
+  const materialStatus=document.getElementById('su-material')?.value||'OK';
+  const nextDayPlan=document.getElementById('su-nextday')?.value||'';
+  if(!workDone){showToast('⚠️ Please fill today\'s work done','info');return;}
+  const cu=window.CU||'unknown';
+  const userName=(window.USERS&&window.USERS[cu])?window.USERS[cu].name:cu;
+  const updateEntry={
+    id:'su'+Date.now(),
+    siteId, date, health,
+    overallProgress, civil, ducting, piping, elec, bms,
+    workDone, issues, manpower, materialStatus, nextDayPlan,
+    submittedBy:userName, submittedByKey:cu,
+    submittedAt:new Date().toISOString()
+  };
+  // Update local health on site
+  const site=SITES.find(s=>s.id===siteId||s.code===siteId);
+  if(site){site.health=health;site.lastUpdate=updateEntry;}
+  // Save to SITE_UPDATES store
+  if(!window.SITE_UPDATES)window.SITE_UPDATES=[];
+  window.SITE_UPDATES.push(updateEntry);
+  saveSiteUpdates();
   showToast('⏳ Saving update...','info');
-  if(window.fbSaveSiteUpdate){
-    const ok=await window.fbSaveSiteUpdate(siteId,progress,health);
-    if(ok){showToast('✅ Site update saved to cloud. Owner notified.','success');}
-    else{showToast('⚠️ Saved locally (cloud sync failed)','info');}
-  } else {
-    showToast('✅ Site update saved.','success');
+  // Save to Firebase (new structured collection + legacy collection)
+  let cloudOk=false;
+  if(window.fbDb){
+    try{
+      await window.fbDb.collection('1wc_site_updates').add({...updateEntry,timestamp:firebase.firestore.FieldValue.serverTimestamp()});
+      cloudOk=true;
+    }catch(e){console.log('site update firebase err:',e);}
   }
+  if(cloudOk){showToast('✅ Site update saved to cloud.','success');}
+  else{showToast('✅ Site update saved locally.','info');}
   closeModal();
 }
 
