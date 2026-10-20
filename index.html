@@ -1116,6 +1116,10 @@ window.PURCHASE_REQUESTS=(()=>{try{const s=localStorage.getItem('1wc_prs');if(s)
 ];})();
 function savePRs(){try{localStorage.setItem('1wc_prs',JSON.stringify(window.PURCHASE_REQUESTS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('purchase_requests').set({entries:window.PURCHASE_REQUESTS}).catch(e=>console.log('FB prs:',e));}catch(e){}}}
 
+// COSTING_MANUAL — manual cost entries (salary, advance, overhead, etc.) per project
+window.COSTING_MANUAL=(()=>{try{const s=localStorage.getItem('1wc_costing_manual');if(s)return JSON.parse(s);}catch(e){}return[];})();
+function saveCostingManual(){try{localStorage.setItem('1wc_costing_manual',JSON.stringify(window.COSTING_MANUAL));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('costing_manual').set({entries:window.COSTING_MANUAL}).catch(e=>console.log('FB costing_manual:',e));}catch(e){}}}
+
 // PR number generator: PR-YYMMDD-NNN
 function genPRNumber(){
   const d=new Date();
@@ -1527,6 +1531,7 @@ const NAV={
     {id:'execution',icon:'⏱️',label:'Timeline & Progress'},
     {id:'attendance',icon:'📅',label:'Attendance'},
     {id:'raise-pr',icon:'📦',label:'Material Request (PR)'},
+    {id:'purchase',icon:'📋',label:'PR Dashboard'},
     {id:'ai-feedback',icon:'🤖',label:'AI Tips'},
     {id:'eod',icon:'📝',label:'EOD Update'},
     {id:'my-eod',icon:'📋',label:'Mere EOD Reports'},
@@ -1571,6 +1576,7 @@ const NAV={
     {id:'sites',icon:'🏗️',label:'Site Update'},
     {id:'attendance',icon:'📅',label:'Attendance'},
     {id:'raise-pr',icon:'📦',label:'Material Request (PR)'},
+    {id:'purchase',icon:'📋',label:'My Site PRs'},
     {id:'ai-feedback',icon:'🤖',label:'AI Tips'},
     {id:'eod',icon:'📝',label:'EOD Update'},
     {id:'my-eod',icon:'📋',label:'Mere EOD Reports'},
@@ -1614,15 +1620,15 @@ function attachAllListeners(){
 
   listenStore('sales_invoices',cloud=>{
     mergeById(cloud,window.SALES_INVOICES,m=>{window.SALES_INVOICES=m;saveSalesInvoices();});
-    if(window.CU)refreshCurrentPage(['accounts','sales']);
+    if(window.CU)refreshCurrentPage(['accounts','sales','project-costing']);
   });
   listenStore('petty_cash',cloud=>{
     mergeById(cloud,window.PETTY_CASH_ENTRIES,m=>{window.PETTY_CASH_ENTRIES=m;savePettyCashEntries();});
-    if(window.CU)refreshCurrentPage(['accounts']);
+    if(window.CU)refreshCurrentPage(['accounts','project-costing']);
   });
   listenStore('purchase_register',cloud=>{
     mergeById(cloud,window.PURCHASE_REGISTER,m=>{window.PURCHASE_REGISTER=m;savePurchaseRegister();});
-    if(window.CU)refreshCurrentPage(['purchase']);
+    if(window.CU)refreshCurrentPage(['purchase','project-costing']);
   });
   listenStore('purchase_requests',cloud=>{
     const cloudArr=Array.isArray(cloud)?cloud:[];
@@ -1635,7 +1641,11 @@ function attachAllListeners(){
   });
   listenStore('contractors',cloud=>{
     mergeById(cloud,window.CONTRACTORS,m=>{window.CONTRACTORS=m;saveContractors();});
-    if(window.CU)refreshCurrentPage(['accounts']);
+    if(window.CU)refreshCurrentPage(['accounts','project-costing']);
+  });
+  listenStore('costing_manual',cloud=>{
+    mergeById(cloud,window.COSTING_MANUAL,m=>{window.COSTING_MANUAL=m;saveCostingManual();});
+    if(window.CU)refreshCurrentPage(['project-costing']);
   });
   listenStore('pipeline',cloud=>{
     mergeById(cloud,SALES_PIPELINE,m=>{SALES_PIPELINE.length=0;m.forEach(i=>SALES_PIPELINE.push(i));savePipeline();});
@@ -3215,23 +3225,31 @@ function confirmLedgerImport(){
 
 // ======================== PURCHASE PAGE ========================
 function pagePurchase(){
+  const _isPurch=CU==='priyanshu'||CU==='prayas';
+  const _isMgr=CU==='amit'||CU==='nazir'||CU==='kuldeep';
+  const _u=window.USERS&&window.USERS[CU]?window.USERS[CU]:{};
+  const _userSite=(!_isPurch&&!_isMgr&&_u.attDefaultSite&&_u.attDefaultSite!=='ALL'&&_u.attDefaultSite!=='OFFICE')?_u.attDefaultSite:null;
+  const _fullAccess=_isPurch||_isMgr;
   return `
-  <div class="tabs">
+  ${_fullAccess?`<div class="tabs">
     <div class="tab active" onclick="switchTab(this,'pur-tab','pur-requests')">Material Requests (PR)</div>
-    <div class="tab" onclick="switchTab(this,'pur-tab','pur-vendors')">Vendor Database</div>
+    ${_isPurch?`<div class="tab" onclick="switchTab(this,'pur-tab','pur-vendors')">Vendor Database</div>
     <div class="tab" onclick="switchTab(this,'pur-tab','pur-register')">Purchase Register</div>
     <div class="tab" onclick="switchTab(this,'pur-tab','pur-stock')">Stock</div>
     <div class="tab" onclick="switchTab(this,'pur-tab','pur-new')">New PR</div>
-    <div class="tab" onclick="switchTab(this,'pur-tab','pur-approval')">PO Approval Status</div>
-  </div>
+    <div class="tab" onclick="switchTab(this,'pur-tab','pur-approval')">PO Approval Status</div>`:''}
+  </div>`:''}
   <div class="pur-tab" id="pur-requests">
     <!-- PR Dashboard Header -->
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-      <div style="font-weight:700;font-size:15px">📋 Material Requests Dashboard</div>
+      <div>
+        <div style="font-weight:700;font-size:15px">📋 Material Requests Dashboard</div>
+        ${_userSite?`<div style="font-size:11px;color:var(--orange);margin-top:2px">🏗️ Showing: ${_userSite} only</div>`:''}
+      </div>
       <div class="btn-row" style="margin:0;gap:6px">
         <button class="btn-primary btn-sm" onclick="openRaisePR()">+ Raise PR</button>
-        <button class="btn-secondary btn-sm" onclick="exportPRsExcel()">📥 Excel</button>
-        <button class="btn-secondary btn-sm" onclick="exportPRsPDF()">🖨️ PDF</button>
+        ${_fullAccess?`<button class="btn-secondary btn-sm" onclick="exportPRsExcel()">📥 Excel</button>
+        <button class="btn-secondary btn-sm" onclick="exportPRsPDF()">🖨️ PDF</button>`:''}
       </div>
     </div>
     <!-- Filters row -->
@@ -3396,6 +3414,13 @@ function prFirstItem(r){const it=prItems(r);return it[0]||{};}
 function renderPRCards(){
   const wrap=document.getElementById('pr-cards-wrap');
   if(!wrap)return;
+  // Role checks
+  const isPurchase=CU==='priyanshu'||CU==='prayas';
+  const isManager=CU==='amit'||CU==='nazir'||CU==='kuldeep';
+  const u=window.USERS&&window.USERS[CU]?window.USERS[CU]:{};
+  // Field users (site engineers, foremen, site leads) only see their own site
+  const userSite=(!isPurchase&&!isManager&&u.attDefaultSite&&u.attDefaultSite!=='ALL'&&u.attDefaultSite!=='OFFICE')?u.attDefaultSite:null;
+
   // Filters
   const siteF=document.getElementById('pr-filter-site')?.value||'';
   const statusF=document.getElementById('pr-filter-status')?.value||'';
@@ -3405,6 +3430,8 @@ function renderPRCards(){
   const myF=document.getElementById('pr-filter-mine')?.checked;
 
   let prs=[...window.PURCHASE_REQUESTS].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  // Site-based access control: field users only see their site's PRs
+  if(userSite)prs=prs.filter(r=>(r.siteCode||r.site||'')===userSite);
   if(siteF)prs=prs.filter(r=>(r.siteCode||r.site||'')=== siteF);
   if(statusF)prs=prs.filter(r=>r.status===statusF);
   if(urgF)prs=prs.filter(r=>r.urgency===urgF);
@@ -3434,7 +3461,7 @@ function renderPRCards(){
   </div>`;
 
   const statusOpts=['PR Received','RFQ Sent','PO Raised','Ordered','Delivered'];
-  const isPurchase=CU==='priyanshu'||CU==='prayas';
+  // isPurchase already declared above via role checks
 
   if(!prs.length){wrap.innerHTML=statsHtml+'<div class="info-box">No PRs match the current filters. <button class="btn-secondary btn-xs" onclick="clearPRFilters()">Clear Filters</button></div>';return;}
 
@@ -4401,70 +4428,202 @@ function pageRFQ(){
     </div>
   </div>`;
 }
-function pageProjectCosting(){
-  const sites=['DMRC-TKD','DMRC-TKRC','LG Noida','Mitsubishi'];
-  const [selSite,setSelSite]=[()=>document.getElementById('pc-site')?.value||'DMRC-TKD',null];
-  const data={
-    'DMRC-TKD':{contracted:8500000,billed:6200000,received:5100000,material:2800000,labour:950000,contractor:1200000,petty:180000,overhead:320000},
-    'DMRC-TKRC':{contracted:4200000,billed:3100000,received:2800000,material:1400000,labour:520000,contractor:680000,petty:95000,overhead:150000},
-    'LG Noida':{contracted:3600000,billed:2000000,received:1600000,material:1100000,labour:380000,contractor:420000,petty:60000,overhead:110000},
-    'Mitsubishi':{contracted:1800000,billed:900000,received:700000,material:550000,labour:180000,contractor:200000,petty:30000,overhead:50000},
-  };
-  function renderPC(site){
-    const d=data[site];
-    const totalCost=d.material+d.labour+d.contractor+d.petty+d.overhead;
-    const margin=d.contracted-totalCost;
-    const marginPct=((margin/d.contracted)*100).toFixed(1);
-    const billedPct=((d.billed/d.contracted)*100).toFixed(0);
-    const recvPct=((d.received/d.contracted)*100).toFixed(0);
-    return `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px">
-      <div class="stat-card" style="border-left:4px solid var(--navy)"><div class="stat-val">₹${(d.contracted/100000).toFixed(1)}L</div><div class="stat-lbl">Contract Value</div></div>
-      <div class="stat-card" style="border-left:4px solid var(--blue)"><div class="stat-val">₹${(d.billed/100000).toFixed(1)}L</div><div class="stat-lbl">Billed (${billedPct}%)</div></div>
-      <div class="stat-card" style="border-left:4px solid var(--green)"><div class="stat-val">₹${(d.received/100000).toFixed(1)}L</div><div class="stat-lbl">Received (${recvPct}%)</div></div>
-      <div class="stat-card" style="border-left:4px solid var(--red)"><div class="stat-val">₹${(totalCost/100000).toFixed(1)}L</div><div class="stat-lbl">Total Cost</div></div>
-      <div class="stat-card" style="border-left:4px solid var(--gold)"><div class="stat-val" style="color:${margin>0?'var(--green)':'var(--red)'}">₹${(margin/100000).toFixed(1)}L</div><div class="stat-lbl">Margin (${marginPct}%)</div></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-      <div class="card">
-        <div style="font-weight:700;margin-bottom:12px">📦 Cost Breakdown (Auto from Project Code)</div>
-        ${[['Material (Purchase)',d.material,'navy'],['Labour (Attendance)',d.labour,'blue'],['Contractor (Sheet)',d.contractor,'purple'],['Petty Cash (Site)',d.petty,'orange'],['Overhead/Other',d.overhead,'text2']].map(([lbl,val,col])=>{
-          const pct=((val/totalCost)*100).toFixed(0);
-          return `<div style="margin-bottom:10px">
-            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>${lbl}</span><span style="font-weight:700">₹${(val/100000).toFixed(1)}L (${pct}%)</span></div>
-            <div style="background:var(--border);border-radius:4px;height:6px"><div style="background:var(--${col});width:${pct}%;height:6px;border-radius:4px"></div></div>
+// ===== PROJECT COSTING TRACKER — LIVE DATA =====
+// Aggregates from SALES_INVOICES (billed/received), PURCHASE_REGISTER (material),
+// PETTY_CASH_ENTRIES (site expenses), CONTRACTORS (contractor payments),
+// COSTING_MANUAL (salary, advance, overhead — manual entries with add/delete).
+function getCostingData(siteCode){
+  const siAll=window.SALES_INVOICES||[];
+  const prAll=window.PURCHASE_REGISTER||[];
+  const pcAll=window.PETTY_CASH_ENTRIES||[];
+  const ctAll=window.CONTRACTORS||[];
+  const mnAll=window.COSTING_MANUAL||[];
+
+  // Sales invoices — match by siteCode
+  const si=siAll.filter(e=>e.siteCode===siteCode||e.projectCode===siteCode);
+  const billed=si.reduce((s,e)=>s+(e.totalValue||e.basicValue||0),0);
+  const received=si.filter(e=>e.paymentStatus==='paid').reduce((s,e)=>s+(e.totalValue||e.basicValue||0),0);
+  // Contract value = sum of all invoices (or manual override from COSTING_MANUAL contractValue entry)
+  const contractEntry=mnAll.find(e=>e.siteCode===siteCode&&e.category==='contractValue');
+  const contracted=contractEntry?contractEntry.amount:billed; // fallback: total billed as contract proxy
+
+  // Purchase register — material cost
+  const pr=prAll.filter(e=>e.siteCode===siteCode||(e.projectCode&&e.projectCode===siteCode));
+  const material=pr.reduce((s,e)=>s+(e.totalValue||e.basicValue||0),0);
+
+  // Petty cash — site expenses
+  const pc=pcAll.filter(e=>e.siteCode===siteCode||(e.projectCode&&e.projectCode===siteCode));
+  const petty=pc.filter(e=>e.entryType==='debit'||e.entryType!=='credit').reduce((s,e)=>s+(e.amount||0),0);
+
+  // Contractors — total bill for this site
+  const ct=ctAll.filter(e=>e.site===siteCode||e.siteCode===siteCode);
+  const contractor=ct.reduce((s,e)=>s+(e.totalBill||0),0);
+
+  // Manual entries — salary, 2nd salary, advance, overhead, etc. (excluding contractValue)
+  const mn=mnAll.filter(e=>e.siteCode===siteCode&&e.category!=='contractValue');
+  const salary=mn.filter(e=>e.category==='salary').reduce((s,e)=>s+(e.amount||0),0);
+  const salary2=mn.filter(e=>e.category==='salary2').reduce((s,e)=>s+(e.amount||0),0);
+  const advance=mn.filter(e=>e.category==='advance').reduce((s,e)=>s+(e.amount||0),0);
+  const overhead=mn.filter(e=>e.category==='overhead').reduce((s,e)=>s+(e.amount||0),0);
+  const otherManual=mn.filter(e=>!['salary','salary2','advance','overhead'].includes(e.category)).reduce((s,e)=>s+(e.amount||0),0);
+
+  return {contracted,billed,received,material,contractor,petty,salary,salary2,advance,overhead,otherManual,
+    siEntries:si,prEntries:pr,pcEntries:pc,ctEntries:ct,mnEntries:mn};
+}
+
+function renderPCBody(siteCode){
+  const d=getCostingData(siteCode);
+  const totalCost=d.material+d.contractor+d.petty+d.salary+d.salary2+d.advance+d.overhead+d.otherManual;
+  const margin=d.contracted-totalCost;
+  const marginPct=d.contracted>0?((margin/d.contracted)*100).toFixed(1):'—';
+  const billedPct=d.contracted>0?((d.billed/d.contracted)*100).toFixed(0):'—';
+  const recvPct=d.contracted>0?((d.received/d.contracted)*100).toFixed(0):'—';
+  const fmt=v=>'₹'+(v>=100000?(v/100000).toFixed(1)+'L':(v/1000).toFixed(0)+'K');
+
+  const breakdownRows=[
+    ['📦 Material (Purchase Reg)',d.material,'navy'],
+    ['🏗️ Contractor Payments',d.contractor,'purple'],
+    ['💼 Petty Cash / Site Exp',d.petty,'orange'],
+    ['👷 Salary (1st)',d.salary,'blue'],
+    ['👷 Salary (2nd / Casual)',d.salary2,'teal'],
+    ['💰 Advances Paid',d.advance,'red'],
+    ['🔧 Overhead / Other',d.overhead+d.otherManual,'text2'],
+  ].filter(([,v])=>v>0);
+
+  return `
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
+    <div class="stat-card" style="border-left:4px solid var(--navy)"><div class="stat-val">${fmt(d.contracted)}</div><div class="stat-lbl">Contract Value</div></div>
+    <div class="stat-card" style="border-left:4px solid var(--blue)"><div class="stat-val">${fmt(d.billed)}</div><div class="stat-lbl">Billed (${billedPct}%)</div></div>
+    <div class="stat-card" style="border-left:4px solid var(--green)"><div class="stat-val">${fmt(d.received)}</div><div class="stat-lbl">Received (${recvPct}%)</div></div>
+    <div class="stat-card" style="border-left:4px solid var(--red)"><div class="stat-val">${fmt(totalCost)}</div><div class="stat-lbl">Total Cost</div></div>
+    <div class="stat-card" style="border-left:4px solid var(--gold)"><div class="stat-val" style="color:${margin>=0?'var(--green)':'var(--red)'}">${fmt(Math.abs(margin))}</div><div class="stat-lbl">Margin ${margin<0?'(Loss)':'('+marginPct+'%)'}</div></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+        <span>📊 Cost Breakdown</span>
+        <span style="font-size:11px;color:var(--text2)">Auto from registers</span>
+      </div>
+      ${breakdownRows.length===0?`<div style="color:var(--text2);font-size:13px">No cost data yet. Add entries in Purchase Register, Petty Cash, or Contractors, or add manual entries below.</div>`:
+        breakdownRows.map(([lbl,val,col])=>{
+          const pct=totalCost>0?Math.min(100,Math.round(val/totalCost*100)):0;
+          return `<div style="margin-bottom:9px">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>${lbl}</span><span style="font-weight:700">${fmt(val)} (${pct}%)</span></div>
+            <div style="background:var(--border);border-radius:4px;height:5px"><div style="background:var(--${col});width:${pct}%;height:5px;border-radius:4px;transition:width 0.4s"></div></div>
           </div>`;
         }).join('')}
+    </div>
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+        <span>🧾 RA Bills (Sales Invoices)</span>
+        <button class="btn-secondary btn-xs" onclick="showPage('accounts')">+ Add Invoice →</button>
       </div>
-      <div class="card">
-        <div style="font-weight:700;margin-bottom:12px">🧾 Billing & Collection</div>
-        <table class="data-table" style="font-size:13px">
-          <thead><tr><th>RA Bill</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
-          <tbody>
-            <tr><td>RA-01</td><td>₹18.5L</td><td><span class="tag tag-green">Received</span></td><td>Aug-26</td></tr>
-            <tr><td>RA-02</td><td>₹14.0L</td><td><span class="tag tag-green">Received</span></td><td>Sep-26</td></tr>
-            <tr><td>RA-03</td><td>₹29.5L</td><td><span class="tag tag-orange">Pending</span></td><td>Sep-26</td></tr>
-          </tbody>
-        </table>
-        <div style="margin-top:10px;display:flex;gap:8px">
-          <button class="btn-primary btn-xs" onclick="showToast('New RA Bill entry opened','success')">+ New RA Bill</button>
-          <button class="btn-secondary btn-xs" onclick="showToast('Report exported','success')">📄 Export P&L</button>
-        </div>
-      </div>
-    </div>`;
-  }
-  c.innerHTML=`
-  <div class="page-title">📊 Project Costing Tracker</div>
-  <div class="card" style="margin-bottom:16px">
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <select id="pc-site" onchange="document.getElementById('pc-body').innerHTML=renderPCBody(this.value)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);font-size:14px">
-        ${sites.map(s=>`<option>${s}</option>`).join('')}
-      </select>
-      <span style="color:var(--text2);font-size:13px">Auto-pulls data tagged to project code</span>
+      ${d.siEntries.length===0?`<div style="color:var(--text2);font-size:13px">No sales invoices tagged to this site yet.</div>`:
+        `<div style="overflow-x:auto"><table class="data-table" style="font-size:11px">
+        <thead><tr><th>Invoice</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+        <tbody>${d.siEntries.slice().sort((a,b)=>b.date>a.date?1:-1).map(e=>`<tr>
+          <td style="font-size:10px">${escHtml(e.invoiceNo||'—')}</td>
+          <td>${fmt(e.totalValue||e.basicValue||0)}</td>
+          <td><span class="tag ${e.paymentStatus==='paid'?'tag-green':'tag-orange'}" style="font-size:9px">${e.paymentStatus==='paid'?'✅ Paid':'⏳ Pending'}</span></td>
+          <td style="white-space:nowrap">${e.date||'—'}</td>
+        </tr>`).join('')}</tbody>
+        </table></div>`}
     </div>
   </div>
-  <div id="pc-body">${renderPC('DMRC-TKD')}</div>`;
-  window.renderPCBody=renderPC;
+
+  <div class="card" style="margin-bottom:14px">
+    <div style="font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <span>✏️ Manual Cost Entries</span>
+      <button class="btn-primary btn-sm" onclick="openAddCostingEntry('${escHtml(siteCode)}')">+ Add Entry</button>
+    </div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Salary, advance, overhead, and other items not in purchase or petty cash registers.</div>
+    ${d.mnEntries.length===0?`<div style="color:var(--text2);font-size:13px">No manual entries yet.</div>`:
+      `<div style="overflow-x:auto"><table class="data-table" style="font-size:12px">
+      <thead><tr><th>Date</th><th>Category</th><th>Amount</th><th>Description</th><th>By</th><th></th></tr></thead>
+      <tbody>${d.mnEntries.slice().sort((a,b)=>b.date>a.date?1:-1).map(e=>`<tr>
+        <td style="white-space:nowrap">${e.date||'—'}</td>
+        <td><span class="tag tag-blue" style="font-size:10px">${e.category||'other'}</span></td>
+        <td style="font-weight:700">${fmt(e.amount||0)}</td>
+        <td style="font-size:11px;max-width:150px">${escHtml(e.desc||'')}</td>
+        <td style="font-size:10px">${escHtml(e.addedBy||'—')}</td>
+        <td><button onclick="deleteCostingEntry('${e.id}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px" title="Delete">🗑️</button></td>
+      </tr>`).join('')}</tbody>
+      </table></div>`}
+  </div>
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn-secondary btn-sm" onclick="exportCostingExcel('${escHtml(siteCode)}')">📥 Export P&L Excel</button>
+    <button class="btn-secondary btn-sm" onclick="showPage('accounts')">🧾 Sales Invoices →</button>
+    <button class="btn-secondary btn-sm" onclick="showPage('purchase')">📦 Purchase Register →</button>
+  </div>`;
+}
+
+function pageProjectCosting(){
+  const sites=(window.SITES||[]).map(s=>s.code);
+  const defaultSite=sites[0]||'';
+  c.innerHTML=`
+  <div class="page-title">📊 Project Costing Tracker</div>
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <select id="pc-site" onchange="document.getElementById('pc-body').innerHTML=renderPCBody(this.value)" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);font-size:14px">
+        ${sites.map(s=>`<option value="${s}">${s}</option>`).join('')}
+        ${sites.length===0?'<option value="">No sites configured</option>':''}
+      </select>
+      <span style="color:var(--text2);font-size:12px">Live data from Purchase Register, Petty Cash, Sales Invoices & Contractors</span>
+    </div>
+  </div>
+  <div id="pc-body">${defaultSite?renderPCBody(defaultSite):'<div class="info-box">No sites found. Add sites first.</div>'}</div>`;
+}
+
+function openAddCostingEntry(siteCode){
+  const cats=[['salary','👷 Salary (1st)'],['salary2','👷 Salary (2nd/Casual)'],['advance','💰 Advance Paid'],['overhead','🔧 Overhead'],['contractValue','📋 Contract Value (Override)'],['other','📌 Other']];
+  openModal('Add Manual Cost Entry',`<div class="eod-form">
+    <div class="row2">
+      <div class="form-row"><label>Date</label><input id="cm-date" type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
+      <div class="form-row"><label>Category</label>
+        <select id="cm-cat">${cats.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Amount (₹)</label><input id="cm-amt" type="number" placeholder="Enter amount"/></div>
+      <div class="form-row"><label>Paid To / Narration</label><input id="cm-paidto" placeholder="e.g. Rehmat salary Oct"/></div>
+    </div>
+    <div class="form-row"><label>Description</label><textarea id="cm-desc" rows="2" placeholder="Additional details..."></textarea></div>
+    <div class="btn-row"><button class="btn-primary" onclick="saveCostingEntry('${escHtml(siteCode)}')">Save Entry</button></div>
+  </div>`);
+}
+function saveCostingEntry(siteCode){
+  const date=document.getElementById('cm-date')?.value;
+  const category=document.getElementById('cm-cat')?.value||'other';
+  const amount=parseFloat(document.getElementById('cm-amt')?.value)||0;
+  const paidTo=document.getElementById('cm-paidto')?.value.trim()||'';
+  const desc=document.getElementById('cm-desc')?.value.trim()||'';
+  if(!date||!amount){showToast('Date and Amount are required','error');return;}
+  const u=window.USERS&&window.USERS[CU]?window.USERS[CU]:{name:CU};
+  window.COSTING_MANUAL.push({id:'cm'+Date.now(),siteCode,date,category,amount,paidTo,desc,addedBy:u.name||CU});
+  saveCostingManual();closeModal();
+  document.getElementById('pc-body').innerHTML=renderPCBody(siteCode);
+  showToast('Entry saved','success');
+}
+function deleteCostingEntry(id){
+  if(!confirm('Delete this cost entry?'))return;
+  window.COSTING_MANUAL=window.COSTING_MANUAL.filter(e=>e.id!==id);
+  saveCostingManual();
+  const site=document.getElementById('pc-site')?.value||'';
+  if(site)document.getElementById('pc-body').innerHTML=renderPCBody(site);
+  showToast('Deleted','info');
+}
+function exportCostingExcel(siteCode){
+  const d=getCostingData(siteCode);
+  const rows=[];
+  d.siEntries.forEach(e=>rows.push({Source:'Sales Invoice',Date:e.date||'',Ref:e.invoiceNo||'',Category:'Billing',Amount:e.totalValue||e.basicValue||0,Desc:e.clientName||'',Status:e.paymentStatus}));
+  d.prEntries.forEach(e=>rows.push({Source:'Purchase Register',Date:e.date||'',Ref:e.billNo||'',Category:'Material',Amount:e.totalValue||e.basicValue||0,Desc:e.vendorName||'',Status:e.paymentStatus||''}));
+  d.pcEntries.forEach(e=>rows.push({Source:'Petty Cash',Date:e.date||'',Ref:e.id||'',Category:e.debitCategory||'Petty Cash',Amount:e.amount||0,Desc:e.narration||'',Status:''}));
+  d.ctEntries.forEach(e=>rows.push({Source:'Contractor',Date:'',Ref:e.id||'',Category:'Contractor',Amount:e.totalBill||0,Desc:e.name||'',Status:''}));
+  d.mnEntries.forEach(e=>rows.push({Source:'Manual',Date:e.date||'',Ref:e.id||'',Category:e.category||'',Amount:e.amount||0,Desc:e.desc||'',Status:''}));
+  if(!rows.length){showToast('No data to export','info');return;}
+  exportToExcel(rows,'1WC_Costing_'+siteCode,'Project Costing – '+siteCode);
 }
 function pageAIFeedback(){
   const tip=getAITip(CU);
