@@ -1780,14 +1780,14 @@ function refreshCurrentPage(affectedPages){
 function syncSalesInvoices(){}
 function syncPettyCash(){}
 function syncPurchaseRegister(){}
-function syncStockItems(){}
-function syncContractors(){}
-function syncPipeline(){}
-function syncDelegatedTasks(){}
-function syncSiteUpdates(){}
-function syncAdhocTasks(){}
-function syncDailyTasks(){}
-function syncSites(){}
+function syncStockItems(){return Promise.resolve();}
+function syncContractors(){return Promise.resolve();}
+function syncPipeline(){return Promise.resolve();}
+function syncDelegatedTasks(){return Promise.resolve();}
+function syncSiteUpdates(){return Promise.resolve();}
+function syncAdhocTasks(){return Promise.resolve();}
+function syncDailyTasks(){return Promise.resolve();}
+function syncSites(){return Promise.resolve();}
 async function syncAllStores(){
   // Real-time listeners handle sync now. This is a no-op kept for compatibility.
 }
