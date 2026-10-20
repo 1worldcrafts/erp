@@ -823,6 +823,121 @@ function saveQuotedJobs(){try{localStorage.setItem('1wc_quoted_jobs',JSON.string
 window.ADHOC_TASKS=(()=>{try{const s=localStorage.getItem('1wc_adhoc');if(s)return JSON.parse(s);}catch(e){}return {};})();
 function saveAdhocTasks(){try{localStorage.setItem('1wc_adhoc',JSON.stringify(window.ADHOC_TASKS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('adhoc').set({entries:window.ADHOC_TASKS}).catch(e=>console.log('FB adhoc:',e));}catch(e){}}}
 
+// DAILY_TASKS — per-user task of the day store. Each entry: {id,user,text,priority,code,date,status:'pending'|'done'|'deleted',doneDate}
+window.DAILY_TASKS=(()=>{try{const s=localStorage.getItem('1wc_daily_tasks');if(s)return JSON.parse(s);}catch(e){}return[];})();
+function saveDailyTasks(){try{localStorage.setItem('1wc_daily_tasks',JSON.stringify(window.DAILY_TASKS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('daily_tasks').set({entries:window.DAILY_TASKS}).catch(e=>console.log('FB daily_tasks:',e));}catch(e){}}}
+function getDailyTasks(user){
+  const today=todayStr();
+  // Auto-carry-forward: any pending tasks from previous days stay in list
+  return window.DAILY_TASKS.filter(t=>t.user===user&&t.status!=='deleted');
+}
+function todayStr(){return new Date().toISOString().slice(0,10);}
+function fmtDate(d){try{const dt=new Date(d);return dt.toLocaleDateString('en-IN',{day:'numeric',month:'short'});}catch(e){return d;}}
+function addDailyTask(){
+  const v=document.getElementById('daily-task-input')?.value?.trim();
+  if(!v){showToast('Write your task first','error');return;}
+  const pri=document.getElementById('daily-task-pri')?.value||'med';
+  const code=document.getElementById('daily-task-code')?.value||'';
+  const task={id:'dt-'+Date.now(),user:CU,text:v,priority:pri,code,date:todayStr(),status:'pending',doneDate:null};
+  window.DAILY_TASKS.push(task);
+  saveDailyTasks();
+  showPage('tasks');
+  showToast('✅ Task added!','success');
+}
+function toggleDailyTask(id){
+  const t=window.DAILY_TASKS.find(x=>x.id===id);
+  if(!t)return;
+  if(t.status==='done'){t.status='pending';t.doneDate=null;}
+  else{t.status='done';t.doneDate=todayStr();}
+  saveDailyTasks();
+  showPage('tasks');
+}
+function deleteDailyTask(id){
+  const t=window.DAILY_TASKS.find(x=>x.id===id);
+  if(!t)return;
+  t.status='deleted';
+  saveDailyTasks();
+  showPage('tasks');
+  showToast('Task removed','info');
+}
+
+function renderDailyTasksSection(u){
+  const today=todayStr();
+  const tasks=getDailyTasks(CU);
+  const pending=tasks.filter(t=>t.status==='pending');
+  const done=tasks.filter(t=>t.status==='done');
+  const carriedForward=pending.filter(t=>t.date<today);
+  const todayPending=pending.filter(t=>t.date===today);
+
+  const priTag=(p)=>p==='high'?'<span class="tag tag-red" style="font-size:10px">HIGH</span>':p==='med'?'<span class="tag tag-orange" style="font-size:10px">MED</span>':'<span class="tag" style="font-size:10px;background:var(--navy3)">LOW</span>';
+
+  const renderTask=(t)=>{
+    const carried=t.date<today&&t.status==='pending';
+    const doneToday=t.status==='done'&&t.doneDate===today;
+    return `<li class="task-item" style="${t.status==='done'?'opacity:0.65':''}${carried?'border-left:3px solid var(--orange);':''}">
+      <div class="task-check${t.status==='done'?' done':''}" onclick="toggleDailyTask('${t.id}')" title="${t.status==='done'?'Mark as pending again':'Mark done'}"></div>
+      <div class="task-body" style="width:100%">
+        <div class="task-title${t.status==='done'?' done':''}">${escHtml(t.text)}</div>
+        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center">
+          ${priTag(t.priority)}
+          ${t.code?`<span class="tag tag-blue" style="font-size:10px">${escHtml(t.code)}</span>`:''}
+          ${carried?`<span style="font-size:10px;color:var(--orange);font-weight:600">⏩ Carried from ${fmtDate(t.date)}</span>`:''}
+          ${doneToday?`<span style="font-size:10px;color:var(--green);font-weight:600">✅ Done today</span>`:''}
+          ${t.status==='done'&&t.doneDate&&t.doneDate!==today?`<span style="font-size:10px;color:var(--text2)">Done on ${fmtDate(t.doneDate)}</span>`:''}
+        </div>
+      </div>
+      <button onclick="deleteDailyTask('${t.id}')" title="Remove task" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px;padding:4px 6px;flex-shrink:0;opacity:0.6" onmouseover="this.style.color='var(--red)';this.style.opacity=1" onmouseout="this.style.color='var(--text2)';this.style.opacity=0.6">✕</button>
+    </li>`;
+  };
+
+  return `<div class="card" style="border-color:var(--blue)66">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+      <div class="card-title" style="margin:0">📋 ${u.hinglish?'Aaj Ke Tasks (Task of the Day)':'Task of the Day'}</div>
+      <div style="font-size:12px;color:var(--text2)">${done.length} done · ${pending.length} pending${carriedForward.length?` · <span style="color:var(--orange)">${carriedForward.length} carried forward</span>`:''}</div>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${u.hinglish?'Aaj ke specific tasks yahan add karo. Jo bacha woh kal carry forward ho jayega.':'Add your specific tasks for today. Anything unfinished automatically carries forward to tomorrow.'}</div>
+
+    ${carriedForward.length?`<div style="background:var(--orange)11;border:1px solid var(--orange)44;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--orange)">
+      ⏩ <strong>${carriedForward.length} task${carriedForward.length>1?'s':''} carried forward</strong> from previous day${carriedForward.length>1?'s':''} — still pending
+    </div>`:''}
+
+    ${tasks.length?`<ul class="task-list" style="margin-bottom:12px">
+      ${[...carriedForward,...todayPending,...done].map(renderTask).join('')}
+    </ul>`:`<div style="color:var(--text2);font-size:13px;text-align:center;padding:16px 0;margin-bottom:12px">
+      ${u.hinglish?'Koi task nahi abhi. Neeche add karo.':'No tasks yet. Add your first task below.'}
+    </div>`}
+
+    <div style="border-top:1px solid var(--border);padding-top:14px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em">${u.hinglish?'Naya Task Add Karo':'Add New Task'}</div>
+      <div class="eod-form">
+        <div class="form-row">
+          <input id="daily-task-input" placeholder="${u.hinglish?'Kya karna hai aaj...':'What needs to get done today...'}" style="width:100%;padding:10px 12px;background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none"
+            onkeydown="if(event.key==='Enter')addDailyTask()" />
+        </div>
+        <div class="row2">
+          <div class="form-row"><label>Priority</label>
+            <select id="daily-task-pri" style="background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;width:100%">
+              <option value="high">🔴 High</option>
+              <option value="med" selected>🟡 Medium</option>
+              <option value="low">🟢 Low</option>
+            </select>
+          </div>
+          <div class="form-row"><label>Project / Dept Code</label>
+            <select id="daily-task-code" style="background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;width:100%">
+              <option value="">— None —</option>
+              ${getProjectCodeOptions(false)}
+            </select>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn-primary" onclick="addDailyTask()">+ ${u.hinglish?'Task Add Karo':'Add Task'}</button>
+          <button class="btn-secondary" style="background:transparent;border-color:var(--text2)" onclick="openManageCodes()">⚙️ Manage Codes</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
 // SITE_UPDATES — array of update objects per site
 window.SITE_UPDATES=(()=>{try{const s=localStorage.getItem('1wc_site_updates');if(s)return JSON.parse(s);}catch(e){}return[];})();
 function saveSiteUpdates(){try{localStorage.setItem('1wc_site_updates',JSON.stringify(window.SITE_UPDATES));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('site_updates').set({entries:window.SITE_UPDATES}).catch(e=>console.log('FB site_updates:',e));}catch(e){}}}
@@ -1193,176 +1308,152 @@ const NAV={
   ],
 };
 
-// ======================== CROSS-DEVICE CLOUD SYNC ========================
-// Pattern: load from Firestore, merge with localStorage (by id), save merged back to localStorage
-async function syncSalesInvoices(){
+// ======================== CROSS-DEVICE REAL-TIME SYNC ========================
+// Uses Firestore onSnapshot listeners — every device sees changes within 1-2 seconds
+// without needing to refresh or re-login.
+// Listeners are attached on login and detached on logout.
+window._unsubscribers=[];
+function detachAllListeners(){
+  window._unsubscribers.forEach(fn=>{try{fn();}catch(e){}});
+  window._unsubscribers=[];
+}
+
+// Generic helper: attach onSnapshot for a 1wc_stores sub-document
+// mergeArrayFn(cloudEntries) updates the global in-memory store and localStorage
+function listenStore(docId, mergeArrayFn){
   if(!window.fbDb)return;
   try{
-    const doc=await window.fbDb.collection('1wc_stores').doc('sales_invoices').get();
-    if(doc.exists){
-      const cloudData=doc.data().entries||[];
-      const local=window.SALES_INVOICES||[];
-      const merged=[...cloudData];
-      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
-      window.SALES_INVOICES=merged;
-      saveSalesInvoices();
-    }
-  }catch(e){console.log('sync sales_invoices:',e);}
+    const unsub=window.fbDb.collection('1wc_stores').doc(docId).onSnapshot(doc=>{
+      try{
+        if(doc.exists){mergeArrayFn(doc.data().entries||[]);}
+      }catch(e){console.log('listener '+docId+':',e);}
+    },e=>console.log('listener err '+docId+':',e));
+    window._unsubscribers.push(unsub);
+  }catch(e){console.log('listenStore '+docId+':',e);}
 }
-async function syncPettyCash(){
-  if(!window.fbDb)return;
+
+function mergeById(cloudArr, localArr, setFn){
+  // Cloud is authoritative; add any local-only items not yet pushed
+  const merged=[...cloudArr];
+  (localArr||[]).forEach(item=>{if(item&&item.id&&!merged.find(c=>c.id===item.id))merged.push(item);});
+  setFn(merged);
+}
+
+function attachAllListeners(){
+  if(!window.fbDb){console.log('Firebase not ready – skipping listeners');return;}
+
+  listenStore('sales_invoices',cloud=>{
+    mergeById(cloud,window.SALES_INVOICES,m=>{window.SALES_INVOICES=m;saveSalesInvoices();});
+    if(window.CU)refreshCurrentPage(['accounts','sales']);
+  });
+  listenStore('petty_cash',cloud=>{
+    mergeById(cloud,window.PETTY_CASH_ENTRIES,m=>{window.PETTY_CASH_ENTRIES=m;savePettyCashEntries();});
+    if(window.CU)refreshCurrentPage(['accounts']);
+  });
+  listenStore('purchase_register',cloud=>{
+    mergeById(cloud,window.PURCHASE_REGISTER,m=>{window.PURCHASE_REGISTER=m;savePurchaseRegister();});
+    if(window.CU)refreshCurrentPage(['purchase']);
+  });
+  listenStore('stock',cloud=>{
+    mergeById(cloud,window.STOCK_ITEMS,m=>{window.STOCK_ITEMS=m;saveStockItems();});
+    if(window.CU)refreshCurrentPage(['purchase']);
+  });
+  listenStore('contractors',cloud=>{
+    mergeById(cloud,window.CONTRACTORS,m=>{window.CONTRACTORS=m;saveContractors();});
+    if(window.CU)refreshCurrentPage(['accounts']);
+  });
+  listenStore('pipeline',cloud=>{
+    mergeById(cloud,SALES_PIPELINE,m=>{SALES_PIPELINE.length=0;m.forEach(i=>SALES_PIPELINE.push(i));savePipeline();});
+    if(window.CU)refreshCurrentPage(['sales']);
+  });
+  listenStore('site_updates',cloud=>{
+    mergeById(cloud,window.SITE_UPDATES,m=>{window.SITE_UPDATES=m;saveSiteUpdates();});
+    if(window.CU)refreshCurrentPage(['sites']);
+  });
+  listenStore('adhoc',cloud=>{
+    // adhoc is an object keyed by user, not an array
+    const cloudObj=(Array.isArray(cloud)?{}:cloud)||{};
+    const local=window.ADHOC_TASKS||{};
+    const merged={...cloudObj};
+    Object.keys(local).forEach(user=>{
+      if(!merged[user])merged[user]=[];
+      (local[user]||[]).forEach(task=>{if(task&&task.id&&!merged[user].find(c=>c.id===task.id))merged[user].push(task);});
+    });
+    window.ADHOC_TASKS=merged;
+    saveAdhocTasks();
+    if(window.CU)refreshCurrentPage(['tasks']);
+  });
+  listenStore('daily_tasks',cloud=>{
+    const cloudArr=Array.isArray(cloud)?cloud:[];
+    const local=window.DAILY_TASKS||[];
+    const merged=[...cloudArr];
+    local.forEach(t=>{
+      if(!t||!t.id)return;
+      const existing=merged.find(c=>c.id===t.id);
+      if(!existing){merged.push(t);}
+      else{
+        // local deletion wins
+        if(t.status==='deleted')existing.status='deleted';
+        // local doneDate wins if cloud doesn't have it
+        if(t.doneDate&&!existing.doneDate){existing.status=t.status;existing.doneDate=t.doneDate;}
+      }
+    });
+    window.DAILY_TASKS=merged;
+    saveDailyTasks();
+    if(window.CU)refreshCurrentPage(['tasks']);
+  });
+  listenStore('sites',cloud=>{
+    const cloudArr=Array.isArray(cloud)?cloud:[];
+    const merged=[...cloudArr];
+    (window.SITES||[]).forEach(s=>{if(s&&s.code&&!merged.find(m=>m.code===s.code))merged.push(s);});
+    window.SITES=merged;
+    saveSites();
+    if(window.CU)refreshCurrentPage(['sites','project-manager']);
+  });
+
+  // Delegated tasks uses a different collection path
   try{
-    const doc=await window.fbDb.collection('1wc_stores').doc('petty_cash').get();
-    if(doc.exists){
-      const cloudData=doc.data().entries||[];
-      const local=window.PETTY_CASH_ENTRIES||[];
-      const merged=[...cloudData];
-      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
-      window.PETTY_CASH_ENTRIES=merged;
-      savePettyCashEntries();
-    }
-  }catch(e){console.log('sync petty_cash:',e);}
+    const unsub=window.fbDb.collection('1wc_delegated').doc('data').onSnapshot(doc=>{
+      try{
+        if(doc.exists){
+          const cloudData=doc.data().entries||[];
+          mergeById(cloudData,DELEGATED_TASKS,m=>{DELEGATED_TASKS.length=0;m.forEach(i=>DELEGATED_TASKS.push(i));saveDelegatedTasks();});
+          if(window.CU)refreshCurrentPage(['tasks','dashboard']);
+        }
+      }catch(e){console.log('listener delegated:',e);}
+    },e=>console.log('listener err delegated:',e));
+    window._unsubscribers.push(unsub);
+  }catch(e){console.log('listenStore delegated:',e);}
+
+  console.log('✅ Real-time listeners attached –', window._unsubscribers.length, 'stores live');
 }
-async function syncPurchaseRegister(){
-  if(!window.fbDb)return;
-  try{
-    const doc=await window.fbDb.collection('1wc_stores').doc('purchase_register').get();
-    if(doc.exists){
-      const cloudData=doc.data().entries||[];
-      const local=window.PURCHASE_REGISTER||[];
-      const merged=[...cloudData];
-      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
-      window.PURCHASE_REGISTER=merged;
-      savePurchaseRegister();
-    }
-  }catch(e){console.log('sync purchase_register:',e);}
+
+// Refresh the page the user is currently viewing if it's in the affected list
+// Debounced to avoid rapid re-renders when multiple listeners fire together
+let _refreshTimer=null;
+function refreshCurrentPage(affectedPages){
+  if(!window._currentPage)return;
+  if(!affectedPages.includes(window._currentPage))return;
+  clearTimeout(_refreshTimer);
+  _refreshTimer=setTimeout(()=>{
+    try{showPage(window._currentPage,true);}catch(e){}
+  },400);
 }
-async function syncStockItems(){
-  if(!window.fbDb)return;
-  try{
-    const doc=await window.fbDb.collection('1wc_stores').doc('stock').get();
-    if(doc.exists){
-      const cloudData=doc.data().entries||[];
-      const local=window.STOCK_ITEMS||[];
-      const merged=[...cloudData];
-      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
-      window.STOCK_ITEMS=merged;
-      saveStockItems();
-    }
-  }catch(e){console.log('sync stock:',e);}
-}
-async function syncContractors(){
-  if(!window.fbDb)return;
-  try{
-    const doc=await window.fbDb.collection('1wc_stores').doc('contractors').get();
-    if(doc.exists){
-      const cloudData=doc.data().entries||[];
-      const local=window.CONTRACTORS||[];
-      const merged=[...cloudData];
-      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
-      window.CONTRACTORS=merged;
-      saveContractors();
-    }
-  }catch(e){console.log('sync contractors:',e);}
-}
-async function syncPipeline(){
-  if(!window.fbDb)return;
-  try{
-    const doc=await window.fbDb.collection('1wc_stores').doc('pipeline').get();
-    if(doc.exists){
-      const cloudData=doc.data().entries||[];
-      const local=SALES_PIPELINE||[];
-      const merged=[...cloudData];
-      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
-      // Update the global SALES_PIPELINE
-      SALES_PIPELINE.length=0;
-      merged.forEach(i=>SALES_PIPELINE.push(i));
-      savePipeline();
-    }
-  }catch(e){console.log('sync pipeline:',e);}
-}
-async function syncDelegatedTasks(){
-  if(!window.fbDb)return;
-  try{
-    const doc=await window.fbDb.collection('1wc_delegated').doc('data').get();
-    if(doc.exists){
-      const cloudData=doc.data().entries||[];
-      const local=DELEGATED_TASKS||[];
-      const merged=[...cloudData];
-      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
-      DELEGATED_TASKS.length=0;
-      merged.forEach(i=>DELEGATED_TASKS.push(i));
-      saveDelegatedTasks();
-    }
-  }catch(e){console.log('sync delegated:',e);}
-}
-async function syncSiteUpdates(){
-  if(!window.fbDb)return;
-  try{
-    // Try structured store first
-    const doc=await window.fbDb.collection('1wc_stores').doc('site_updates').get();
-    if(doc.exists){
-      const cloudData=doc.data().entries||[];
-      const local=window.SITE_UPDATES||[];
-      const merged=[...cloudData];
-      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
-      window.SITE_UPDATES=merged;
-      saveSiteUpdates();
-      return;
-    }
-    // Fallback: load from collection (legacy individual docs)
-    const snap=await window.fbDb.collection('1wc_site_updates').get();
-    if(!snap.empty){
-      const cloudData=snap.docs.map(d=>({id:d.id,...d.data()}));
-      const local=window.SITE_UPDATES||[];
-      const merged=[...cloudData];
-      local.forEach(item=>{if(!merged.find(c=>c.id===item.id))merged.push(item);});
-      window.SITE_UPDATES=merged;
-      saveSiteUpdates();
-    }
-  }catch(e){console.log('sync site_updates:',e);}
-}
-async function syncAdhocTasks(){
-  if(!window.fbDb)return;
-  try{
-    const doc=await window.fbDb.collection('1wc_stores').doc('adhoc').get();
-    if(doc.exists){
-      const cloudData=doc.data().entries||{};
-      const local=window.ADHOC_TASKS||{};
-      // Merge per-user arrays
-      const merged={...cloudData};
-      Object.keys(local).forEach(user=>{
-        if(!merged[user])merged[user]=[];
-        local[user].forEach(task=>{if(!merged[user].find(c=>c.id===task.id))merged[user].push(task);});
-      });
-      window.ADHOC_TASKS=merged;
-      saveAdhocTasks();
-    }
-  }catch(e){console.log('sync adhoc:',e);}
-}
-async function syncSites(){
-  if(!window.fbDb)return;
-  try{
-    const doc=await window.fbDb.collection('1wc_stores').doc('sites').get();
-    if(doc.exists){
-      const cloud=doc.data().entries||[];
-      // merge: add any cloud sites not already in local
-      const merged=[...window.SITES];
-      cloud.forEach(s=>{ if(s&&s.code&&!merged.find(m=>m.code===s.code)) merged.push(s); });
-      window.SITES=merged;
-      saveSites();
-    }
-  }catch(e){ console.log('syncSites err:',e); }
-}
-// Run all syncs in background (called at login and on relevant page open)
+
+// Keep backward-compat stubs so any legacy call to syncAllStores() still works
+function syncSalesInvoices(){}
+function syncPettyCash(){}
+function syncPurchaseRegister(){}
+function syncStockItems(){}
+function syncContractors(){}
+function syncPipeline(){}
+function syncDelegatedTasks(){}
+function syncSiteUpdates(){}
+function syncAdhocTasks(){}
+function syncDailyTasks(){}
+function syncSites(){}
 async function syncAllStores(){
-  // Fire all syncs in parallel, don't block
-  Promise.allSettled([
-    syncSalesInvoices(),syncPettyCash(),syncPurchaseRegister(),
-    syncStockItems(),syncContractors(),syncPipeline(),
-    syncDelegatedTasks(),syncSiteUpdates(),syncAdhocTasks(),
-    syncSites()
-  ]).catch(()=>{});
+  // Real-time listeners handle sync now. This is a no-op kept for compatibility.
 }
 
 // ======================== LOGIN / LOGOUT ========================
@@ -1374,9 +1465,11 @@ function doLogin(){
   taskReasons=loadTaskReasons(); // restore incomplete reasons
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='block';
+  attachAllListeners();
   initApp();
 }
 function doLogout(){
+  detachAllListeners();
   CU=null; window.CU=null; taskChecked={}; taskReasons={};
   document.getElementById('app').style.display='none';
   document.getElementById('login-screen').style.display='flex';
@@ -1395,8 +1488,7 @@ function initApp(){
   // Load delegated tasks and notifications from Firebase then show dashboard
   window.ENQUIRY_NOTIFICATIONS=[];
   async function loadAndShow(){
-    // 0. Background sync all stores from Firebase (cross-device)
-    syncAllStores().catch(()=>{});
+    // 0. Listeners attached at login handle real-time sync; nothing needed here
     // 1. Load delegated tasks
     if(window.fbLoadDelegatedTasks){
       try{
@@ -1450,8 +1542,8 @@ function buildSidebar(){
 function toggleSidebar(){sidebarOpen=!sidebarOpen;document.getElementById('sidebar').classList.toggle('open',sidebarOpen);}
 
 // ======================== ROUTING ========================
-function showPage(id){
-  currentPage=id;
+function showPage(id,_silent){
+  currentPage=id; window._currentPage=id;
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
   const navEl=document.getElementById('nav-'+id);
   if(navEl)navEl.classList.add('active');
@@ -1838,33 +1930,7 @@ function pageTasks(){
     </div>`:'<div style="color:var(--text2);font-size:12px;margin-bottom:12px">Start ticking tasks above and they\'ll appear here automatically in your EOD.</div>'}
     <button class="btn-primary" style="width:100%;padding:12px" onclick="showPage('eod')">📤 ${u.hinglish?'EOD Submit Karo':'Prepare & Submit EOD Report →'}</button>
   </div>
-  <div class="card">
-    <div class="card-title">${u.hinglish?'Naya Kaam Add Karo':'Add Ad-hoc Task'}</div>
-    <div class="eod-form">
-      <div class="form-row">
-        <input id="adhoc-task" placeholder="${u.hinglish?'Naya kaam type karo...':'Type new task...'}" style="width:100%;padding:10px 12px;background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none" />
-      </div>
-      <div class="row2">
-        <div class="form-row"><label>Priority</label>
-          <select id="adhoc-pri" style="background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;width:100%">
-            <option value="high">🔴 High</option>
-            <option value="med" selected>🟡 Medium</option>
-            <option value="low">🟢 Low</option>
-          </select>
-        </div>
-        <div class="form-row"><label>Project / Dept Code</label>
-          <select id="adhoc-code" style="background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;width:100%">
-            <option value="">— None —</option>
-            ${getProjectCodeOptions(false)}
-          </select>
-        </div>
-      </div>
-      <div class="btn-row">
-        <button class="btn-secondary" onclick="addAdhocTask()">+ Add Task</button>
-        <button class="btn-secondary" style="background:transparent;border-color:var(--text2)" onclick="openManageCodes()">⚙️ Manage Codes</button>
-      </div>
-    </div>
-  </div>`;
+  ${renderDailyTasksSection(u)}`;
 }
 function clearTaskReason(tk){
   delete taskReasons[tk];
@@ -1947,10 +2013,18 @@ function pageEOD(){
   myDelegated.forEach(t=>{if(t.done)completedTasks.push({text:t.task,source:'delegated'});});
   const incompleteTasks=[];
   Object.entries(taskReasons).forEach(([k,r])=>{incompleteTasks.push({key:k,text:r.taskText||k,reason:r.reason,customText:r.customText||''});});
+  // Daily tasks for EOD
+  const myDailyTasks=getDailyTasks(CU);
+  const dailyDone=myDailyTasks.filter(t=>t.status==='done'&&t.doneDate===todayStr());
+  const dailyPending=myDailyTasks.filter(t=>t.status==='pending');
+  const dailyCarried=dailyPending.filter(t=>t.date<todayStr());
   // Pre-populate textarea values
-  const preSummary=completedTasks.length?completedTasks.map(t=>'• '+t.text).join('\n'):'';
-  const preIssues=incompleteTasks.length?incompleteTasks.map(t=>'• '+t.text+' → '+t.reason+(t.customText?' ('+t.customText+')':'')).join('\n'):'';
-  const hasTaskData=completedTasks.length>0||incompleteTasks.length>0;
+  const preSummaryLines=[...completedTasks.map(t=>'• [SOP] '+t.text),...dailyDone.map(t=>'• [Task] '+t.text)];
+  const preSummary=preSummaryLines.join('\n');
+  const preIssuesLines=[...incompleteTasks.map(t=>'• '+t.text+' → '+t.reason+(t.customText?' ('+t.customText+')':'')),
+    ...dailyCarried.map(t=>'• [Task carried forward] '+t.text)];
+  const preIssues=preIssuesLines.join('\n');
+  const hasTaskData=completedTasks.length>0||incompleteTasks.length>0||dailyDone.length>0||dailyPending.length>0;
   // Find incomplete SOP tasks that have no reason recorded yet
   const sopIncomplete=sop.filter((_,i)=>!taskChecked[i]&&!taskReasons['sop-'+i]);
   return `
@@ -1958,8 +2032,10 @@ function pageEOD(){
     <div class="card-title">${hin?'Aaj Ka EOD Update':'End of Day Report'}</div>
     ${hasTaskData?`<div class="info-box" style="margin-bottom:12px">
       <div style="font-weight:700;margin-bottom:8px">📋 Today's Task Summary (auto-filled from your task list)</div>
-      ${completedTasks.length?`<div style="margin-bottom:6px"><span style="color:var(--green);font-weight:600">✅ Completed (${completedTasks.length})</span><div style="margin-top:4px;font-size:12px;line-height:1.6">${completedTasks.map(t=>`• ${escHtml(t.text)}`).join('<br>')}</div></div>`:''}
-      ${incompleteTasks.length?`<div><span style="color:var(--red);font-weight:600">❌ Not Completed (${incompleteTasks.length})</span><div style="margin-top:4px;font-size:12px;line-height:1.6">${incompleteTasks.map(t=>`• ${escHtml(t.text)} <em style="color:var(--text2)">→ ${escHtml(t.reason)}${t.customText?' ('+escHtml(t.customText)+')':''}</em>`).join('<br>')}</div></div>`:''}
+      ${completedTasks.length?`<div style="margin-bottom:6px"><span style="color:var(--green);font-weight:600">✅ SOP Completed (${completedTasks.length})</span><div style="margin-top:4px;font-size:12px;line-height:1.6">${completedTasks.map(t=>`• ${escHtml(t.text)}`).join('<br>')}</div></div>`:''}
+      ${dailyDone.length?`<div style="margin-bottom:6px"><span style="color:var(--green);font-weight:600">✅ Daily Tasks Done (${dailyDone.length})</span><div style="margin-top:4px;font-size:12px;line-height:1.6">${dailyDone.map(t=>`• ${escHtml(t.text)}${t.code?' ['+t.code+']':''}`).join('<br>')}</div></div>`:''}
+      ${incompleteTasks.length?`<div style="margin-bottom:6px"><span style="color:var(--red);font-weight:600">❌ SOP Not Completed (${incompleteTasks.length})</span><div style="margin-top:4px;font-size:12px;line-height:1.6">${incompleteTasks.map(t=>`• ${escHtml(t.text)} <em style="color:var(--text2)">→ ${escHtml(t.reason)}${t.customText?' ('+escHtml(t.customText)+')':''}</em>`).join('<br>')}</div></div>`:''}
+      ${dailyPending.length?`<div><span style="color:var(--orange);font-weight:600">⏳ Daily Tasks Pending (${dailyPending.length})</span><div style="margin-top:4px;font-size:12px;line-height:1.6">${dailyPending.map(t=>`• ${escHtml(t.text)}${t.date<todayStr()?' <em style="color:var(--orange)">(from '+fmtDate(t.date)+')</em>':''}`).join('<br>')}</div></div>`:''}
     </div>`:''}
     <div class="row2">
       <div class="form-row"><label>${hin?'Tarikh':'Date'}</label><input type="date" value="${new Date().toISOString().split('T')[0]}" id="eod-date"/></div>
@@ -2033,8 +2109,12 @@ async function submitEOD(){
   const completedList=[];
   sop.forEach((t,i)=>{if(taskChecked[i])completedList.push({text:t.text,source:'sop'});});
   myDelegated.forEach(t=>{if(t.done)completedList.push({text:t.task,source:'delegated'});});
+  // Include daily tasks in EOD report
+  const myDT=getDailyTasks(CU);
+  myDT.filter(t=>t.status==='done'&&t.doneDate===todayStr()).forEach(t=>completedList.push({text:t.text,source:'daily',code:t.code||''}));
   const incompleteList=[];
   Object.entries(taskReasons).forEach(([k,r])=>{incompleteList.push({key:k,text:r.taskText||k,reason:r.reason,customText:r.customText||''});});
+  myDT.filter(t=>t.status==='pending').forEach(t=>incompleteList.push({key:t.id,text:t.text,reason:t.date<todayStr()?'Carried forward from '+fmtDate(t.date):'Pending',customText:''}));
   const taskSummary={completed:completedList,incomplete:incompleteList};
   const data={summary,tomorrow,issues,mood,escalation,site,date,taskSummary};
   showToast('⏳ Submitting EOD...','info');
