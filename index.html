@@ -823,6 +823,148 @@ function saveQuotedJobs(){try{localStorage.setItem('1wc_quoted_jobs',JSON.string
 window.ADHOC_TASKS=(()=>{try{const s=localStorage.getItem('1wc_adhoc');if(s)return JSON.parse(s);}catch(e){}return {};})();
 function saveAdhocTasks(){try{localStorage.setItem('1wc_adhoc',JSON.stringify(window.ADHOC_TASKS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('adhoc').set({entries:window.ADHOC_TASKS}).catch(e=>console.log('FB adhoc:',e));}catch(e){}}}
 
+// SOP_OVERRIDES — persists user edits/deletions to their SOP checklist
+// Structure: { kuldeep: { 0: {text:'edited text', deleted:false}, 3: {deleted:true} }, ... }
+window.SOP_OVERRIDES=(()=>{try{const s=localStorage.getItem('1wc_sop_overrides');if(s)return JSON.parse(s);}catch(e){}return {};})();
+function saveSopOverrides(){
+  try{localStorage.setItem('1wc_sop_overrides',JSON.stringify(window.SOP_OVERRIDES));}catch(e){}
+  if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('sop_overrides').set({entries:window.SOP_OVERRIDES}).catch(e=>console.log('FB sop_overrides:',e));}catch(e){}}
+}
+function getEffectiveSop(user){
+  // Returns the SOP array with user edits/deletions applied
+  const base=SOPs[user]||[];
+  const overrides=(window.SOP_OVERRIDES[user]||{});
+  return base.map((t,i)=>{
+    const ov=overrides[i];
+    if(!ov)return t;
+    if(ov.deleted)return null;
+    return {...t,text:ov.text!==undefined?ov.text:t.text,priority:ov.priority||t.priority};
+  }).filter(Boolean);
+}
+function getEffectiveSopWithIndex(user){
+  // Returns [{task, origIndex}] preserving original index for taskChecked mapping
+  const base=SOPs[user]||[];
+  const overrides=(window.SOP_OVERRIDES[user]||{});
+  const result=[];
+  base.forEach((t,i)=>{
+    const ov=overrides[i];
+    if(ov&&ov.deleted)return;
+    result.push({task:ov?{...t,text:ov.text!==undefined?ov.text:t.text,priority:ov.priority||t.priority}:t, origIndex:i});
+  });
+  return result;
+}
+function editSopTask(i){
+  const base=SOPs[CU]||[];
+  const t=base[i]; if(!t)return;
+  const overrides=window.SOP_OVERRIDES[CU]||{};
+  const cur=overrides[i]||{};
+  const curText=cur.text!==undefined?cur.text:t.text;
+  const curPri=cur.priority||t.priority||'med';
+  openModal('✏️ Edit SOP Task',`
+    <div class="eod-form">
+      <div class="form-row"><label>Task Description</label>
+        <textarea id="sop-edit-text" rows="3" style="background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;width:100%;font-size:13px">${escHtml(curText)}</textarea>
+      </div>
+      <div class="form-row"><label>Priority</label>
+        <select id="sop-edit-pri" style="background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;width:100%">
+          <option value="high"${curPri==='high'?' selected':''}>🔴 High</option>
+          <option value="med"${curPri==='med'?' selected':''}>🟡 Medium</option>
+          <option value="low"${curPri==='low'?' selected':''}>🟢 Low</option>
+        </select>
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary" onclick="saveSopEdit(${i})">💾 Save Changes</button>
+        <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      </div>
+    </div>`);
+}
+function saveSopEdit(i){
+  const text=document.getElementById('sop-edit-text')?.value?.trim();
+  const priority=document.getElementById('sop-edit-pri')?.value||'med';
+  if(!text){showToast('Task text cannot be empty','error');return;}
+  if(!window.SOP_OVERRIDES[CU])window.SOP_OVERRIDES[CU]={};
+  window.SOP_OVERRIDES[CU][i]={...(window.SOP_OVERRIDES[CU][i]||{}),text,priority,deleted:false};
+  saveSopOverrides();
+  closeModal();
+  showPage('tasks');
+  showToast('✅ Task updated','success');
+}
+function deleteSopTask(i){
+  const base=SOPs[CU]||[];
+  const t=base[i]; if(!t)return;
+  openModal('🗑️ Delete SOP Task',`
+    <div style="text-align:center;padding:8px 0 16px">
+      <div style="font-size:32px;margin-bottom:12px">🗑️</div>
+      <div style="font-size:14px;color:var(--text);margin-bottom:6px">Remove this task from your checklist?</div>
+      <div style="font-size:13px;color:var(--text2);background:var(--navy2);border-radius:8px;padding:10px;margin-bottom:16px">"${escHtml(t.text)}"</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:16px">You can restore it anytime from ⚙️ Manage SOP.</div>
+      <div class="btn-row" style="justify-content:center">
+        <button class="btn-primary" style="background:var(--red)" onclick="confirmDeleteSopTask(${i})">🗑️ Yes, Remove</button>
+        <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      </div>
+    </div>`);
+}
+function confirmDeleteSopTask(i){
+  if(!window.SOP_OVERRIDES[CU])window.SOP_OVERRIDES[CU]={};
+  window.SOP_OVERRIDES[CU][i]={...(window.SOP_OVERRIDES[CU][i]||{}),deleted:true};
+  saveSopOverrides();
+  closeModal();
+  showPage('tasks');
+  showToast('Task removed from your checklist','info');
+}
+function restoreAllSopTasks(){
+  if(!window.SOP_OVERRIDES[CU])return;
+  // Remove all deletions, keep edits
+  Object.keys(window.SOP_OVERRIDES[CU]).forEach(k=>{
+    if(window.SOP_OVERRIDES[CU][k].deleted)delete window.SOP_OVERRIDES[CU][k];
+  });
+  saveSopOverrides();
+  showPage('tasks');
+  showToast('✅ All deleted tasks restored','success');
+}
+function openManageSop(){
+  const base=SOPs[CU]||[];
+  const overrides=window.SOP_OVERRIDES[CU]||{};
+  const deleted=base.map((t,i)=>({t,i})).filter(({i})=>overrides[i]&&overrides[i].deleted);
+  const edited=base.map((t,i)=>({t,i})).filter(({i})=>overrides[i]&&!overrides[i].deleted&&overrides[i].text!==undefined);
+  openModal('⚙️ Manage SOP Checklist',`
+    <div style="font-size:13px">
+      ${deleted.length?`<div style="margin-bottom:14px">
+        <div style="font-weight:700;margin-bottom:8px;color:var(--red)">🗑️ Removed Tasks (${deleted.length})</div>
+        ${deleted.map(({t,i})=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--navy2);border-radius:8px;margin-bottom:6px;gap:8px">
+          <span style="color:var(--text2);font-size:12px;flex:1">${escHtml(t.text)}</span>
+          <button onclick="restoreSopTask(${i})" style="background:var(--green)22;border:1px solid var(--green)44;color:var(--green);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;white-space:nowrap">↩ Restore</button>
+        </div>`).join('')}
+        <button onclick="restoreAllSopTasks()" class="btn-secondary" style="width:100%;margin-top:4px">↩ Restore All</button>
+      </div>`:'<div style="color:var(--text2);font-size:12px;margin-bottom:14px">No tasks removed.</div>'}
+      ${edited.length?`<div>
+        <div style="font-weight:700;margin-bottom:8px;color:var(--blue)">✏️ Edited Tasks (${edited.length})</div>
+        ${edited.map(({t,i})=>`<div style="padding:8px 10px;background:var(--navy2);border-radius:8px;margin-bottom:6px">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:2px">Original: ${escHtml(t.text)}</div>
+          <div style="font-size:12px;color:var(--text)">Now: ${escHtml(overrides[i].text)}</div>
+          <button onclick="resetSopTask(${i})" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:11px;margin-top:4px;padding:0;text-decoration:underline">↩ Reset to original</button>
+        </div>`).join('')}
+      </div>`:''}
+      ${!deleted.length&&!edited.length?'<div style="color:var(--text2);text-align:center;padding:16px">Your SOP is unmodified.</div>':''}
+    </div>`);
+}
+function restoreSopTask(i){
+  if(!window.SOP_OVERRIDES[CU])return;
+  delete window.SOP_OVERRIDES[CU][i];
+  saveSopOverrides();
+  openManageSop();
+  showToast('Task restored','success');
+  refreshCurrentPage(['tasks']);
+}
+function resetSopTask(i){
+  if(!window.SOP_OVERRIDES[CU]||!window.SOP_OVERRIDES[CU][i])return;
+  delete window.SOP_OVERRIDES[CU][i];
+  saveSopOverrides();
+  openManageSop();
+  showToast('Task reset to original','info');
+  refreshCurrentPage(['tasks']);
+}
+
 // DAILY_TASKS — per-user task of the day store. Each entry: {id,user,text,priority,code,date,status:'pending'|'done'|'deleted',doneDate}
 window.DAILY_TASKS=(()=>{try{const s=localStorage.getItem('1wc_daily_tasks');if(s)return JSON.parse(s);}catch(e){}return[];})();
 function saveDailyTasks(){try{localStorage.setItem('1wc_daily_tasks',JSON.stringify(window.DAILY_TASKS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('daily_tasks').set({entries:window.DAILY_TASKS}).catch(e=>console.log('FB daily_tasks:',e));}catch(e){}}}
@@ -1410,6 +1552,19 @@ function attachAllListeners(){
     saveSites();
     if(window.CU)refreshCurrentPage(['sites','project-manager']);
   });
+  // SOP overrides — object keyed by username
+  listenStore('sop_overrides',cloud=>{
+    if(cloud&&typeof cloud==='object'&&!Array.isArray(cloud)){
+      // Merge: cloud wins, but keep any local keys that cloud doesn't have
+      const merged={...window.SOP_OVERRIDES};
+      Object.keys(cloud).forEach(user=>{
+        merged[user]={...(merged[user]||{}),...cloud[user]};
+      });
+      window.SOP_OVERRIDES=merged;
+      try{localStorage.setItem('1wc_sop_overrides',JSON.stringify(window.SOP_OVERRIDES));}catch(e){}
+      if(window.CU)refreshCurrentPage(['tasks']);
+    }
+  });
 
   // Delegated tasks uses a different collection path
   try{
@@ -1849,13 +2004,14 @@ function pageTasks(){
     window.ADHOC_TASKS[CU].forEach(t=>{if(!existingIds.has(t.id)){SOPs[CU].push(t);}});
   }
   const u=USERS[CU];
-  const sop=SOPs[CU]||[];
+  const sopItems=getEffectiveSopWithIndex(CU); // [{task, origIndex}] with deletions removed
+  const sop=sopItems.map(x=>x.task); // for backward compat with EOD preview references below
   const myDelegated=DELEGATED_TASKS.filter(t=>t.to===CU&&!t.done);
   const prioL={high:u.hinglish?'🔴 Zaroor':'🔴 High',med:u.hinglish?'🟡 Karna Hai':'🟡 Medium',low:u.hinglish?'🟢 Baad Mein':'🟢 Low'};
   const today=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short'});
   // Count done/incomplete for EOD preview bar
-  const doneCount=sop.filter((_,i)=>taskChecked[i]).length;
-  const incCount=sop.length-doneCount;
+  const doneCount=sopItems.filter(x=>taskChecked[x.origIndex]).length;
+  const incCount=sopItems.length-doneCount;
   const hasReasons=Object.keys(taskReasons).length>0;
 
   return `
@@ -1884,17 +2040,27 @@ function pageTasks(){
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <div class="card-title" style="margin:0">${u.hinglish?'Aaj Ka SOP Checklist':'Daily SOP Checklist'} – ${today}</div>
-      <div style="font-size:12px;color:var(--text2)">${doneCount}/${sop.length} done</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:var(--text2)">${doneCount}/${sopItems.length} done</span>
+        <button onclick="openManageSop()" style="background:var(--navy3);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:11px;padding:3px 8px;cursor:pointer" title="Edit or restore SOP tasks">⚙️ Manage</button>
+      </div>
     </div>
     <ul class="task-list">
-    ${sop.map((t,i)=>{
-      const tk='sop-'+i;
+    ${sopItems.map(({task:t,origIndex:oi})=>{
+      const tk='sop-'+oi;
       const r=taskReasons[tk];
-      const checked=taskChecked[i];
+      const checked=taskChecked[oi];
+      const safeText=t.text.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
       return `<li class="task-item" style="${checked?'opacity:0.7':''}${r&&!checked?'background:var(--red)08;':''}">
-      <div class="task-check${checked?' done':''}" onclick="toggleTask(${i})" title="${checked?'Mark incomplete':'Mark done'}"></div>
+      <div class="task-check${checked?' done':''}" onclick="toggleTask(${oi})" title="${checked?'Mark incomplete':'Mark done'}"></div>
       <div class="task-body" style="width:100%">
-        <div class="task-title${checked?' done':''}">${t.text}</div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div class="task-title${checked?' done':''}" style="flex:1">${t.text}</div>
+          <div style="display:flex;gap:4px;flex-shrink:0">
+            <button onclick="editSopTask(${oi})" title="Edit task" style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:14px;padding:2px 4px;border-radius:4px;line-height:1" onmouseover="this.style.background='var(--navy3)'" onmouseout="this.style.background='none'">✏️</button>
+            <button onclick="deleteSopTask(${oi})" title="Remove task" style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:14px;padding:2px 4px;border-radius:4px;line-height:1" onmouseover="this.style.background='var(--red)22'" onmouseout="this.style.background='none'">🗑️</button>
+          </div>
+        </div>
         <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center">
           ${t.priority==='high'?'<span class="tag tag-red" style="font-size:10px">HIGH</span>':t.priority==='med'?'<span class="tag tag-orange" style="font-size:10px">MED</span>':'<span class="tag" style="font-size:10px;background:var(--navy3)">LOW</span>'}
           ${t.code?`<span class="tag tag-blue" style="font-size:10px">${t.code}</span>`:''}
@@ -1906,7 +2072,7 @@ function pageTasks(){
           <button onclick="clearTaskReason('${tk}')" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:10px;margin-left:6px">✕ clear</button>
         </div>`:''}
         ${!checked&&!r?`<div class="btn-row" style="margin-top:6px;gap:6px">
-          <button class="btn-secondary btn-xs" style="color:var(--red);border-color:var(--red)44" onclick="eodIncompleteReason('${tk}','${t.text.replace(/'/g,"\\'")}')">❌ Cannot Complete</button>
+          <button class="btn-secondary btn-xs" style="color:var(--red);border-color:var(--red)44" onclick="eodIncompleteReason('${tk}','${safeText}')">❌ Cannot Complete</button>
         </div>`:''}
       </div></li>`;
     }).join('')}
@@ -1943,7 +2109,7 @@ function toggleTask(i){
   showPage('tasks');
 }
 function markAllDone(){
-  (SOPs[CU]||[]).forEach((_,i)=>taskChecked[i]=true);
+  getEffectiveSopWithIndex(CU).forEach(({origIndex:i})=>taskChecked[i]=true);
   saveTaskChecked();
   showPage('tasks');
   showToast('✅ All tasks marked complete!','success');
