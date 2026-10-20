@@ -1106,13 +1106,137 @@ window.CONTRACTORS=(()=>{try{const s=localStorage.getItem('1wc_contractors');if(
 function saveContractors(){try{localStorage.setItem('1wc_contractors',JSON.stringify(window.CONTRACTORS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('contractors').set({entries:window.CONTRACTORS}).catch(e=>console.log('FB contractors:',e));}catch(e){}}}
 
 // PURCHASE_REQUESTS
+// New model: each PR has line items [{desc, qty, uom}], siteCode, projectCode, raisedBy, raisedByName, date, urgency, status, remarks
+// Legacy single-mat PRs: mat/qty fields kept for backward compat; items array preferred
 window.PURCHASE_REQUESTS=(()=>{try{const s=localStorage.getItem('1wc_prs');if(s)return JSON.parse(s);}catch(e){}return[
-  {id:'PR001',site:'PERFETTI-RDR',siteName:'Perfetti Rudrapur',mat:'Armaflex 25mm Insulation',qty:'120 sqm',urgency:'high',by:'Rohtash',date:'2026-09-30',status:'RFQ Sent'},
-  {id:'PR002',site:'DMRC-TKD',siteName:'DMRC TKD',mat:'GI Duct Sheet 22 Gauge',qty:'800 kg',urgency:'med',by:'Ajay',date:'2026-09-29',status:'PR Received'},
-  {id:'PR003',site:'GODREJ-NEST',siteName:'Godrej Nest',mat:'AHU Filter F7 (6 nos)',qty:'6 Nos',urgency:'low',by:'Vinay',date:'2026-09-25',status:'Ordered'},
-  {id:'PR004',site:'BIJWASAN-D',siteName:'Bijwasan Ducting',mat:'GI Duct Sheet 24 Gauge',qty:'500 kg',urgency:'med',by:'Parvez',date:'2026-09-26',status:'PR Received'},
+  {id:'PR001',siteCode:'PERFETTI-RDR',siteName:'Perfetti Rudrapur',projectCode:'',items:[{desc:'Armaflex 25mm Insulation',qty:120,uom:'sqm'}],urgency:'high',raisedBy:'rohtash',raisedByName:'Rohtash',date:'2026-09-30',status:'RFQ Sent',remarks:''},
+  {id:'PR002',siteCode:'DMRC-TKD',siteName:'DMRC TKD',projectCode:'',items:[{desc:'GI Duct Sheet 22 Gauge',qty:800,uom:'kg'}],urgency:'med',raisedBy:'ajay',raisedByName:'Ajay',date:'2026-09-29',status:'PR Received',remarks:''},
+  {id:'PR003',siteCode:'GODREJ-NEST',siteName:'Godrej Nest',projectCode:'',items:[{desc:'AHU Filter F7',qty:6,uom:'Nos'}],urgency:'low',raisedBy:'vinay',raisedByName:'Vinay',date:'2026-09-25',status:'Ordered',remarks:''},
+  {id:'PR004',siteCode:'BIJWASAN-D',siteName:'Bijwasan Ducting',projectCode:'',items:[{desc:'GI Duct Sheet 24 Gauge',qty:500,uom:'kg'}],urgency:'med',raisedBy:'',raisedByName:'Parvez',date:'2026-09-26',status:'PR Received',remarks:''},
 ];})();
 function savePRs(){try{localStorage.setItem('1wc_prs',JSON.stringify(window.PURCHASE_REQUESTS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('purchase_requests').set({entries:window.PURCHASE_REQUESTS}).catch(e=>console.log('FB prs:',e));}catch(e){}}}
+
+// PR number generator: PR-YYMMDD-NNN
+function genPRNumber(){
+  const d=new Date();
+  const yy=String(d.getFullYear()).slice(2);
+  const mm=String(d.getMonth()+1).padStart(2,'0');
+  const dd=String(d.getDate()).padStart(2,'0');
+  const todayPfx='PR-'+yy+mm+dd;
+  const todayPRs=window.PURCHASE_REQUESTS.filter(r=>r.id.startsWith(todayPfx));
+  const seq=String(todayPRs.length+1).padStart(3,'0');
+  return todayPfx+'-'+seq;
+}
+
+const UOM_OPTIONS=['Nos','kg','sqm','lm (Running Metre)','Set','Lot','Litre','Box','Roll','Bag','Sheet','Pair','MTR','FT','Bundle'];
+
+// Open the universal Raise PR modal (usable by any role)
+function openRaisePR(){
+  const siteOpts=(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code} – ${s.name||s.code}</option>`).join('');
+  const projOpts=getProjectCodeOptions(false);
+  const uomOpts=UOM_OPTIONS.map(u=>`<option>${u}</option>`).join('');
+  const today=new Date().toISOString().split('T')[0];
+  openModal('📦 Raise Material Request (PR)',`
+  <div class="eod-form" style="max-width:540px">
+    <div class="row2">
+      <div class="form-row"><label>Site ⚠️</label>
+        <select id="pr-m-site" style="background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;width:100%">
+          <option value="">— Select Site —</option>${siteOpts}
+        </select>
+      </div>
+      <div class="form-row"><label>Project Code</label>
+        <select id="pr-m-proj" style="background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;width:100%">${projOpts}</select>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="form-row"><label>Required By Date</label>
+        <input id="pr-m-date" type="date" value="${today}" style="background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;width:100%"/>
+      </div>
+      <div class="form-row"><label>Urgency</label>
+        <select id="pr-m-urg" style="background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;width:100%">
+          <option value="high">🔴 Urgent (Today)</option>
+          <option value="med" selected>🟡 Normal (2–3 days)</option>
+          <option value="low">🟢 Planning (1 week+)</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row"><label>Material Items</label>
+      <div id="pr-items-wrap">
+        <div class="pr-item-row" style="display:grid;grid-template-columns:1fr 80px 100px 32px;gap:6px;margin-bottom:6px;align-items:center">
+          <input placeholder="Material description + spec…" class="pr-desc-input" style="background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 9px;font-size:12px"/>
+          <input type="number" min="0" step="0.01" placeholder="Qty" class="pr-qty-input" style="background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 9px;font-size:12px"/>
+          <select class="pr-uom-input" style="background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 6px;font-size:12px">${uomOpts}</select>
+          <button onclick="removePRItemRow(this)" title="Remove row" style="background:var(--red)22;border:1px solid var(--red)44;border-radius:6px;color:var(--red);cursor:pointer;font-size:14px;padding:4px 6px;line-height:1">✕</button>
+        </div>
+      </div>
+      <button onclick="addPRItemRow()" style="background:none;border:1px dashed var(--border);border-radius:6px;color:var(--text2);cursor:pointer;font-size:12px;padding:6px 12px;width:100%;margin-top:4px">+ Add another item</button>
+    </div>
+    <div class="form-row"><label>Remarks (optional)</label>
+      <textarea id="pr-m-remarks" rows="2" placeholder="Brand preference, urgency reason, drawing ref…" style="background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;width:100%;font-size:13px"></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="savePRFromModal()">📨 Submit PR</button>
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>`);
+}
+function addPRItemRow(){
+  const wrap=document.getElementById('pr-items-wrap');
+  if(!wrap)return;
+  const uomOpts=UOM_OPTIONS.map(u=>`<option>${u}</option>`).join('');
+  const row=document.createElement('div');
+  row.className='pr-item-row';
+  row.style.cssText='display:grid;grid-template-columns:1fr 80px 100px 32px;gap:6px;margin-bottom:6px;align-items:center';
+  row.innerHTML=`<input placeholder="Material description + spec…" class="pr-desc-input" style="background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 9px;font-size:12px"/>
+  <input type="number" min="0" step="0.01" placeholder="Qty" class="pr-qty-input" style="background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 9px;font-size:12px"/>
+  <select class="pr-uom-input" style="background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 6px;font-size:12px">${uomOpts}</select>
+  <button onclick="removePRItemRow(this)" title="Remove row" style="background:var(--red)22;border:1px solid var(--red)44;border-radius:6px;color:var(--red);cursor:pointer;font-size:14px;padding:4px 6px;line-height:1">✕</button>`;
+  wrap.appendChild(row);
+}
+function removePRItemRow(btn){
+  const wrap=document.getElementById('pr-items-wrap');
+  if(!wrap)return;
+  const rows=wrap.querySelectorAll('.pr-item-row');
+  if(rows.length<=1){showToast('At least one item required','info');return;}
+  btn.closest('.pr-item-row').remove();
+}
+function savePRFromModal(){
+  const siteCode=document.getElementById('pr-m-site')?.value||'';
+  const projectCode=document.getElementById('pr-m-proj')?.value||'';
+  const date=document.getElementById('pr-m-date')?.value||new Date().toISOString().split('T')[0];
+  const urgency=document.getElementById('pr-m-urg')?.value||'med';
+  const remarks=document.getElementById('pr-m-remarks')?.value.trim()||'';
+  if(!siteCode){showToast('Please select a site','error');return;}
+  // collect items
+  const items=[];
+  document.querySelectorAll('.pr-item-row').forEach(row=>{
+    const desc=row.querySelector('.pr-desc-input')?.value.trim();
+    const qty=parseFloat(row.querySelector('.pr-qty-input')?.value)||0;
+    const uom=row.querySelector('.pr-uom-input')?.value||'Nos';
+    if(desc)items.push({desc,qty,uom});
+  });
+  if(!items.length){showToast('Add at least one material item','error');return;}
+  const siteObj=(window.SITES||[]).find(s=>s.code===siteCode);
+  const pr={
+    id:genPRNumber(),
+    siteCode,
+    siteName:siteObj?siteObj.name:siteCode,
+    projectCode,
+    items,
+    urgency,
+    raisedBy:CU||'',
+    raisedByName:(window.USERS&&window.USERS[CU])?window.USERS[CU].name:CU||'Unknown',
+    date,
+    status:'PR Received',
+    remarks,
+    receivedDate:null,
+  };
+  window.PURCHASE_REQUESTS.push(pr);
+  savePRs();
+  closeModal();
+  if(window._currentPage==='purchase')renderPRCards();
+  showToast('✅ PR '+pr.id+' submitted to Purchase','success');
+}
 
 // VENDORS
 window.VENDORS=(()=>{try{const s=localStorage.getItem('1wc_vendors');if(s)return JSON.parse(s);}catch(e){}return[
@@ -1402,6 +1526,7 @@ const NAV={
     {id:'sites',icon:'🏗️',label:'Sabhi Sites'},
     {id:'execution',icon:'⏱️',label:'Timeline & Progress'},
     {id:'attendance',icon:'📅',label:'Attendance'},
+    {id:'raise-pr',icon:'📦',label:'Material Request (PR)'},
     {id:'ai-feedback',icon:'🤖',label:'AI Tips'},
     {id:'eod',icon:'📝',label:'EOD Update'},
     {id:'my-eod',icon:'📋',label:'Mere EOD Reports'},
@@ -1414,6 +1539,7 @@ const NAV={
     {id:'execution',icon:'⏱️',label:'Project Timeline'},
     {id:'sites',icon:'🏗️',label:'Sites Overview'},
     {section:'Tracking'},
+    {id:'raise-pr',icon:'📦',label:'Raise Material PR'},
     {id:'purchase',icon:'📦',label:'Material Lookahead'},
     {id:'rfq',icon:'📨',label:'RFQ / Procurement'},
     {id:'project-costing',icon:'📊',label:'BOQ & Costing'},
@@ -1432,6 +1558,7 @@ const NAV={
     {id:'sites',icon:'🏗️',label:'Site Updates'},
     {id:'execution',icon:'⏱️',label:'Timeline'},
     {id:'attendance',icon:'📅',label:'Attendance'},
+    {id:'raise-pr',icon:'📦',label:'Material Request (PR)'},
     {id:'ai-feedback',icon:'🤖',label:'AI Tips'},
     {id:'eod',icon:'📝',label:'EOD Report'},
     {id:'my-eod',icon:'📋',label:'My Past Reports'},
@@ -1443,6 +1570,7 @@ const NAV={
     {id:'tasks',icon:'✅',label:'Aaj Ka Kaam (SOP)'},
     {id:'sites',icon:'🏗️',label:'Site Update'},
     {id:'attendance',icon:'📅',label:'Attendance'},
+    {id:'raise-pr',icon:'📦',label:'Material Request (PR)'},
     {id:'ai-feedback',icon:'🤖',label:'AI Tips'},
     {id:'eod',icon:'📝',label:'EOD Update'},
     {id:'my-eod',icon:'📋',label:'Mere EOD Reports'},
@@ -1495,6 +1623,11 @@ function attachAllListeners(){
   listenStore('purchase_register',cloud=>{
     mergeById(cloud,window.PURCHASE_REGISTER,m=>{window.PURCHASE_REGISTER=m;savePurchaseRegister();});
     if(window.CU)refreshCurrentPage(['purchase']);
+  });
+  listenStore('purchase_requests',cloud=>{
+    const cloudArr=Array.isArray(cloud)?cloud:[];
+    mergeById(cloudArr,window.PURCHASE_REQUESTS,m=>{window.PURCHASE_REQUESTS=m;savePRs();});
+    if(window.CU)refreshCurrentPage(['purchase','tasks']);
   });
   listenStore('stock',cloud=>{
     mergeById(cloud,window.STOCK_ITEMS,m=>{window.STOCK_ITEMS=m;saveStockItems();});
@@ -1735,6 +1868,7 @@ function showPage(id,_silent){
     case 'planning': pagePlanning();break;
     case 'my-eod': pageMyEODs().catch(e=>{c.innerHTML='<div class="card"><p style="color:var(--red)">Failed to load. Check connection.</p></div>';console.error(e);});break;
     case 'team-eod': pageTeamEODs().catch(e=>{c.innerHTML='<div class="card"><p style="color:var(--red)">Failed to load. Check connection.</p></div>';console.error(e);});break;
+    case 'raise-pr': openRaisePR(); window._currentPage='tasks'; break; // opens modal, stays on current page
     default: content.innerHTML='<div class="card"><p style="color:var(--text2)">Coming soon…</p></div>';
   }
 }
@@ -2096,7 +2230,12 @@ function pageTasks(){
     </div>`:'<div style="color:var(--text2);font-size:12px;margin-bottom:12px">Start ticking tasks above and they\'ll appear here automatically in your EOD.</div>'}
     <button class="btn-primary" style="width:100%;padding:12px" onclick="showPage('eod')">📤 ${u.hinglish?'EOD Submit Karo':'Prepare & Submit EOD Report →'}</button>
   </div>
-  ${renderDailyTasksSection(u)}`;
+  ${renderDailyTasksSection(u)}
+  ${CU!=='priyanshu'?`<div style="margin-top:8px">
+    <button class="btn-secondary" style="width:100%;padding:11px;border:1.5px dashed var(--orange)44;color:var(--orange);border-radius:10px;font-size:13px;font-weight:600" onclick="openRaisePR()">
+      📦 Raise Material Request (PR) →
+    </button>
+  </div>`:''}`;
 }
 function clearTaskReason(tk){
   delete taskReasons[tk];
@@ -3086,7 +3225,48 @@ function pagePurchase(){
     <div class="tab" onclick="switchTab(this,'pur-tab','pur-approval')">PO Approval Status</div>
   </div>
   <div class="pur-tab" id="pur-requests">
-    <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn-primary btn-sm" onclick="openNewPRInline()">+ New PR</button></div>
+    <!-- PR Dashboard Header -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div style="font-weight:700;font-size:15px">📋 Material Requests Dashboard</div>
+      <div class="btn-row" style="margin:0;gap:6px">
+        <button class="btn-primary btn-sm" onclick="openRaisePR()">+ Raise PR</button>
+        <button class="btn-secondary btn-sm" onclick="exportPRsExcel()">📥 Excel</button>
+        <button class="btn-secondary btn-sm" onclick="exportPRsPDF()">🖨️ PDF</button>
+      </div>
+    </div>
+    <!-- Filters row -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+      <select id="pr-filter-fy" onchange="renderPRCards()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All FY</option>
+        <option value="2026-27" selected>FY 2026-27</option>
+        <option value="2025-26">FY 2025-26</option>
+      </select>
+      <select id="pr-filter-month" onchange="renderPRCards()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All Months</option>
+        <option value="04">April</option><option value="05">May</option><option value="06">June</option>
+        <option value="07">July</option><option value="08">August</option><option value="09">September</option>
+        <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+        <option value="01">January</option><option value="02">February</option><option value="03">March</option>
+      </select>
+      <select id="pr-filter-site" onchange="renderPRCards()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All Sites</option>
+        ${(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code}</option>`).join('')}
+      </select>
+      <select id="pr-filter-status" onchange="renderPRCards()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All Status</option>
+        <option>PR Received</option><option>RFQ Sent</option><option>PO Raised</option><option>Ordered</option><option>Delivered</option>
+      </select>
+      <select id="pr-filter-urg" onchange="renderPRCards()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px">
+        <option value="">All Urgency</option>
+        <option value="high">🔴 Urgent</option>
+        <option value="med">🟡 Normal</option>
+        <option value="low">🟢 Low</option>
+      </select>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2);cursor:pointer">
+        <input type="checkbox" id="pr-filter-mine" onchange="renderPRCards()" style="cursor:pointer"/>My PRs only
+      </label>
+      <button onclick="clearPRFilters()" class="btn-secondary" style="padding:5px 10px;font-size:11px">✕ Clear</button>
+    </div>
     <div id="pr-cards-wrap"></div>
   </div>
   <div class="pur-tab" id="pur-vendors" style="display:none">
@@ -3205,70 +3385,212 @@ function pagePurchase(){
   </div>`;
 }
 // ======================== PURCHASE HELPERS ========================
+// Helper: get display items from legacy or new PR
+function prItems(r){
+  if(r.items&&r.items.length)return r.items;
+  // legacy single-item PR
+  return [{desc:r.mat||r.description||'',qty:r.qty||'',uom:''}];
+}
+function prFirstItem(r){const it=prItems(r);return it[0]||{};}
+
 function renderPRCards(){
   const wrap=document.getElementById('pr-cards-wrap');
   if(!wrap)return;
+  // Filters
+  const siteF=document.getElementById('pr-filter-site')?.value||'';
+  const statusF=document.getElementById('pr-filter-status')?.value||'';
+  const urgF=document.getElementById('pr-filter-urg')?.value||'';
+  const fyF=document.getElementById('pr-filter-fy')?.value||'';
+  const monthF=document.getElementById('pr-filter-month')?.value||'';
+  const myF=document.getElementById('pr-filter-mine')?.checked;
+
+  let prs=[...window.PURCHASE_REQUESTS].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  if(siteF)prs=prs.filter(r=>(r.siteCode||r.site||'')=== siteF);
+  if(statusF)prs=prs.filter(r=>r.status===statusF);
+  if(urgF)prs=prs.filter(r=>r.urgency===urgF);
+  if(myF)prs=prs.filter(r=>r.raisedBy===CU);
+  if(fyF){
+    const [fy1,fy2]=fyF.split('-');
+    prs=prs.filter(r=>{
+      if(!r.date)return false;
+      const d=new Date(r.date);
+      const y=d.getFullYear(),m=d.getMonth()+1;
+      return (m>=4&&y===parseInt(fy1))||(m<=3&&y===parseInt('20'+fy2));
+    });
+  }
+  if(monthF)prs=prs.filter(r=>r.date&&r.date.slice(5,7)===monthF);
+
+  // Stats
+  const total=prs.length;
+  const pending=prs.filter(r=>r.status==='PR Received').length;
+  const inProgress=prs.filter(r=>['RFQ Sent','PO Raised','Ordered'].includes(r.status)).length;
+  const delivered=prs.filter(r=>r.status==='Delivered').length;
+
+  const statsHtml=`<div class="stat-grid" style="margin-bottom:14px">
+    <div class="stat-card"><div class="stat-label">Total PRs</div><div class="stat-value blue">${total}</div></div>
+    <div class="stat-card"><div class="stat-label">Pending Action</div><div class="stat-value red">${pending}</div></div>
+    <div class="stat-card"><div class="stat-label">In Progress</div><div class="stat-value orange">${inProgress}</div></div>
+    <div class="stat-card"><div class="stat-label">Delivered</div><div class="stat-value green">${delivered}</div></div>
+  </div>`;
+
   const statusOpts=['PR Received','RFQ Sent','PO Raised','Ordered','Delivered'];
-  wrap.innerHTML=window.PURCHASE_REQUESTS.map(r=>`
-  <div class="card" style="margin-bottom:12px;border-left:4px solid ${r.urgency==='high'?'var(--red)':r.urgency==='med'?'var(--orange)':'var(--green)'}">
-    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <div>
-        <div style="font-size:13px;font-weight:700">${r.mat}</div>
-        <div style="font-size:12px;color:var(--text2);margin-top:4px">🏗️ ${r.siteName||r.site} · <span style="color:var(--orange)">${r.site}</span> · Qty: ${r.qty}</div>
-        <div style="font-size:11px;color:var(--text2);margin-top:2px">By ${r.by} · ${r.date}</div>
+  const isPurchase=CU==='priyanshu'||CU==='prayas';
+
+  if(!prs.length){wrap.innerHTML=statsHtml+'<div class="info-box">No PRs match the current filters. <button class="btn-secondary btn-xs" onclick="clearPRFilters()">Clear Filters</button></div>';return;}
+
+  wrap.innerHTML=statsHtml+prs.map(r=>{
+    const urgColor=r.urgency==='high'?'var(--red)':r.urgency==='med'?'var(--orange)':'var(--green)';
+    const its=prItems(r);
+    const isReceived=r.status==='Delivered';
+    return `<div class="card" style="margin-bottom:10px;border-left:4px solid ${urgColor}">
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:flex-start">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:11px;font-weight:700;color:var(--blue);font-family:monospace">${r.id}</span>
+            <span class="tag tag-${r.urgency==='high'?'red':r.urgency==='med'?'orange':'green'}" style="font-size:10px">${r.urgency==='high'?'🔴 Urgent':r.urgency==='med'?'🟡 Normal':'🟢 Low'}</span>
+            <span class="tag tag-${isReceived?'green':r.status==='PR Received'?'red':'orange'}" style="font-size:10px">${r.status}</span>
+          </div>
+          <div style="font-size:12px;color:var(--text2);margin-top:5px">
+            🏗️ <strong style="color:var(--text)">${r.siteName||r.siteCode||r.site||'—'}</strong>
+            ${r.siteCode?`<span style="color:var(--orange);margin-left:4px">[${r.siteCode}]</span>`:''}
+            ${r.projectCode?`· 📁 ${r.projectCode}`:''}
+          </div>
+          <div style="margin-top:8px">
+            ${its.map((it,idx)=>`<div style="font-size:12px;padding:4px 0;${idx?'border-top:1px solid var(--border);':''}" >
+              <span style="color:var(--text);font-weight:600">${idx+1}. ${escHtml(it.desc||'')}</span>
+              ${(it.qty||it.uom)?`<span style="color:var(--text2);font-size:11px;margin-left:6px">— ${it.qty} ${it.uom||''}</span>`:''}
+            </div>`).join('')}
+          </div>
+          ${r.remarks?`<div style="font-size:11px;color:var(--text2);margin-top:5px;font-style:italic">📝 ${escHtml(r.remarks)}</div>`:''}
+          <div style="font-size:11px;color:var(--text2);margin-top:5px">
+            By <strong>${escHtml(r.raisedByName||r.by||'—')}</strong> · ${r.date||'—'}
+            ${r.receivedDate?`· ✅ Received: ${r.receivedDate}`:''}
+          </div>
+        </div>
+        ${isPurchase?`<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">
+          <select onchange="updatePRStatus('${r.id}',this.value)" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-size:11px">
+            ${statusOpts.map(s=>`<option${s===r.status?' selected':''}>${s}</option>`).join('')}
+          </select>
+          ${!isReceived?`<button onclick="markPRReceived('${r.id}')" style="background:var(--green)22;border:1px solid var(--green)44;color:var(--green);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;white-space:nowrap">✅ Mark Received</button>`:''}
+        </div>`:''}
       </div>
-      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
-        <div class="tag tag-${r.urgency==='high'?'red':r.urgency==='med'?'orange':'green'}">${r.urgency==='high'?'🔴 Urgent':r.urgency==='med'?'🟡 Normal':'🟢 Low'}</div>
-        <select onchange="updatePRStatus('${r.id}',this.value)" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-size:11px">
-          ${statusOpts.map(s=>`<option${s===r.status?' selected':''}>${s}</option>`).join('')}
-        </select>
+      <div class="btn-row" style="margin-top:10px;gap:6px">
+        ${isPurchase?`<button class="btn-primary btn-sm" onclick="showPage('rfq')">Generate RFQ</button>
+        <button class="btn-secondary btn-sm" onclick="showPage('vendor-compare')">Vendors</button>
+        <button class="btn-secondary btn-sm" style="color:var(--red)" onclick="deletePR('${r.id}')">🗑️</button>`:''}
+        ${r.raisedBy===CU&&!isPurchase?`<button class="btn-secondary btn-xs" style="color:var(--red)" onclick="deletePR('${r.id}')">🗑️ Withdraw</button>`:''}
       </div>
-    </div>
-    <div class="btn-row" style="margin-top:12px">
-      <button class="btn-primary btn-sm" onclick="showPage('rfq')">Generate RFQ</button>
-      <button class="btn-secondary btn-sm" onclick="showPage('vendor-compare')">Compare Vendors</button>
-      <button class="btn-secondary btn-sm" style="color:var(--red)" onclick="deletePR('${r.id}')">🗑️ Delete</button>
-    </div>
-  </div>`).join('')||'<div class="info-box">No PRs yet. Click + New PR to add one.</div>';
+    </div>`;
+  }).join('');
+}
+function clearPRFilters(){
+  ['pr-filter-site','pr-filter-status','pr-filter-urg','pr-filter-fy','pr-filter-month'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.value='';
+  });
+  const cb=document.getElementById('pr-filter-mine');if(cb)cb.checked=false;
+  renderPRCards();
 }
 function updatePRStatus(id,status){
   const idx=window.PURCHASE_REQUESTS.findIndex(r=>r.id===id);
-  if(idx>=0){window.PURCHASE_REQUESTS[idx].status=status;savePRs();showToast('Status updated: '+status,'success');}
+  if(idx>=0){window.PURCHASE_REQUESTS[idx].status=status;savePRs();showToast('Status: '+status,'success');}
+}
+function markPRReceived(id){
+  const idx=window.PURCHASE_REQUESTS.findIndex(r=>r.id===id);
+  if(idx>=0){
+    window.PURCHASE_REQUESTS[idx].status='Delivered';
+    window.PURCHASE_REQUESTS[idx].receivedDate=new Date().toISOString().split('T')[0];
+    savePRs();renderPRCards();showToast('✅ Marked as received','success');
+  }
 }
 function deletePR(id){
-  if(!confirm('Delete this PR?'))return;
-  window.PURCHASE_REQUESTS=window.PURCHASE_REQUESTS.filter(r=>r.id!==id);
-  savePRs();renderPRCards();showToast('PR deleted','info');
-}
-function openNewPRInline(){
-  openModal('New Purchase Request',`<div class="eod-form">
-    <div class="row2">
-      <div class="form-row"><label>Site Code</label><select id="pr-site-code2">${siteOptionsRequired()}</select></div>
-      <div class="form-row"><label>Project Code</label><select id="pr-site2">${getProjectCodeOptions(false)}</select></div>
+  openModal('🗑️ Delete PR',`<div style="text-align:center;padding:8px 0">
+    <div style="font-size:32px;margin-bottom:12px">🗑️</div>
+    <div style="font-size:14px;margin-bottom:16px">Delete PR <strong>${id}</strong>? This cannot be undone.</div>
+    <div class="btn-row" style="justify-content:center">
+      <button class="btn-primary" style="background:var(--red)" onclick="confirmDeletePR('${id}')">Yes, Delete</button>
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
     </div>
-    <div class="row2">
-      <div class="form-row"><label>Required By</label><input id="pr-date2" type="date"/></div>
-      <div class="form-row"><label>Urgency</label>
-        <select id="pr-urg2"><option value="high">🔴 Urgent</option><option value="med" selected>🟡 Normal</option><option value="low">🟢 Low</option></select>
-      </div>
-    </div>
-    <div class="form-row"><label>Material / Description</label><textarea id="pr-desc2" rows="2" placeholder="With specs..."></textarea></div>
-    <div class="form-row"><label>Qty + Unit</label><input id="pr-qty2" placeholder="100 sqm, 5 Nos..."/></div>
-    <div class="btn-row"><button class="btn-primary" onclick="saveNewPR()">Submit PR</button></div>
   </div>`);
 }
-function saveNewPR(){
-  const siteCode=document.getElementById('pr-site-code2')?.value||'';
-  const site=document.getElementById('pr-site2')?.value;
-  const date=document.getElementById('pr-date2')?.value;
-  const desc=document.getElementById('pr-desc2')?.value.trim();
-  const qty=document.getElementById('pr-qty2')?.value.trim();
-  const urgency=document.getElementById('pr-urg2')?.value||'med';
-  if(!desc){showToast('Fill material description','info');return;}
-  const siteObj=(window.SITES||[]).find(s=>s.code===siteCode)||SITES.find(s=>s.code===site);
-  window.PURCHASE_REQUESTS.push({id:'PR'+Date.now(),siteCode,site:site||siteCode,siteName:siteObj?siteObj.name:(site||siteCode),mat:desc,qty:qty||'1 unit',urgency,by:(window.USERS&&window.USERS[CU])?window.USERS[CU].name:CU||'Me',date:date||new Date().toISOString().split('T')[0],status:'PR Received'});
-  savePRs();closeModal();renderPRCards();showToast('PR submitted','success');
+function confirmDeletePR(id){
+  window.PURCHASE_REQUESTS=window.PURCHASE_REQUESTS.filter(r=>r.id!==id);
+  savePRs();closeModal();renderPRCards();showToast('PR deleted','info');
 }
+// Export PR list to Excel
+function exportPRsExcel(){
+  const prs=getFilteredPRs();
+  const rows=[];
+  prs.forEach(r=>{
+    prItems(r).forEach((it,i)=>{
+      rows.push({
+        'PR No':r.id,
+        'Date':r.date||'',
+        'Site':r.siteName||r.siteCode||r.site||'',
+        'Site Code':r.siteCode||r.site||'',
+        'Project Code':r.projectCode||'',
+        'Material':it.desc||'',
+        'Qty':it.qty||'',
+        'UOM':it.uom||'',
+        'Urgency':r.urgency==='high'?'Urgent':r.urgency==='med'?'Normal':'Low',
+        'Status':r.status||'',
+        'Raised By':r.raisedByName||r.by||'',
+        'Required By':r.date||'',
+        'Received Date':r.receivedDate||'',
+        'Remarks':r.remarks||'',
+      });
+    });
+  });
+  if(!rows.length){showToast('No PRs to export','info');return;}
+  exportToExcel(rows,'1WC_MaterialRequests_'+new Date().toISOString().slice(0,10),'Material Requests');
+}
+function getFilteredPRs(){
+  const siteF=document.getElementById('pr-filter-site')?.value||'';
+  const statusF=document.getElementById('pr-filter-status')?.value||'';
+  const urgF=document.getElementById('pr-filter-urg')?.value||'';
+  const fyF=document.getElementById('pr-filter-fy')?.value||'';
+  const monthF=document.getElementById('pr-filter-month')?.value||'';
+  let prs=[...window.PURCHASE_REQUESTS].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  if(siteF)prs=prs.filter(r=>(r.siteCode||r.site||'')===siteF);
+  if(statusF)prs=prs.filter(r=>r.status===statusF);
+  if(urgF)prs=prs.filter(r=>r.urgency===urgF);
+  if(fyF){const [fy1,fy2]=fyF.split('-');prs=prs.filter(r=>{if(!r.date)return false;const d=new Date(r.date);const y=d.getFullYear(),m=d.getMonth()+1;return (m>=4&&y===parseInt(fy1))||(m<=3&&y===parseInt('20'+fy2));});}
+  if(monthF)prs=prs.filter(r=>r.date&&r.date.slice(5,7)===monthF);
+  return prs;
+}
+// Print PRs as PDF via browser print
+function exportPRsPDF(){
+  const prs=getFilteredPRs();
+  if(!prs.length){showToast('No PRs to export','info');return;}
+  const rows=prs.map(r=>{
+    const its=prItems(r);
+    return `<tr>
+      <td style="font-weight:600;font-family:monospace;color:#2563eb">${r.id}</td>
+      <td>${r.date||'—'}</td>
+      <td>${escHtml(r.siteName||r.siteCode||r.site||'—')}<br><small style="color:#666">${r.siteCode||''}</small></td>
+      <td>${r.projectCode||'—'}</td>
+      <td>${its.map(it=>`<div>${escHtml(it.desc||'')} — <strong>${it.qty} ${it.uom||''}</strong></div>`).join('')}</td>
+      <td><span style="color:${r.urgency==='high'?'#dc2626':r.urgency==='med'?'#d97706':'#16a34a'};font-weight:700">${r.urgency==='high'?'Urgent':r.urgency==='med'?'Normal':'Low'}</span></td>
+      <td>${r.status||'—'}</td>
+      <td>${escHtml(r.raisedByName||r.by||'—')}</td>
+      <td>${r.receivedDate||'—'}</td>
+    </tr>`;
+  }).join('');
+  const win=window.open('','_blank','width=1100,height=700');
+  win.document.write(`<!DOCTYPE html><html><head><title>1WorldCrafts – Material Requests</title>
+  <style>body{font-family:Arial,sans-serif;font-size:12px;margin:20px}h2{color:#1e40af;margin-bottom:4px}p{color:#666;margin-bottom:16px;font-size:11px}
+  table{width:100%;border-collapse:collapse}th{background:#1e40af;color:#fff;padding:7px 8px;text-align:left;font-size:11px}
+  td{padding:6px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top;font-size:11px}tr:nth-child(even){background:#f8fafc}
+  @media print{body{margin:10px}}</style></head>
+  <body><h2>1WorldCrafts – Material Requests</h2>
+  <p>Generated: ${new Date().toLocaleString('en-IN')} · ${prs.length} PR(s)</p>
+  <table><thead><tr><th>PR No</th><th>Date</th><th>Site</th><th>Project</th><th>Materials</th><th>Urgency</th><th>Status</th><th>Raised By</th><th>Received</th></tr></thead>
+  <tbody>${rows}</tbody></table></body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(()=>win.print(),400);
+}
+function openNewPRInline(){openRaisePR();}
+function saveNewPR(){savePRFromModal();}
 function renderVendorDB(){
   const wrap=document.getElementById('vendor-db-wrap');
   if(!wrap)return;
