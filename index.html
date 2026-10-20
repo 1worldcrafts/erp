@@ -1103,22 +1103,17 @@ window.CONTRACTORS=(()=>{try{const s=localStorage.getItem('1wc_contractors');if(
   {id:'c002',name:'Mustaqueen',site:'Godrej Nest',totalBill:280000,advance:40000,formalSalary:22000,actualCash:55000},
   {id:'c003',name:'Parvez',site:'Bijwasan-D',totalBill:95000,advance:15000,formalSalary:15000,actualCash:32000},
 ];})();
-function saveContractors(){try{localStorage.setItem('1wc_contractors',JSON.stringify(window.CONTRACTORS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('contractors').set({entries:window.CONTRACTORS}).catch(e=>console.log('FB contractors:',e));}catch(e){}}}
+function saveContractors(){suppressRefreshFor(4000);try{localStorage.setItem('1wc_contractors',JSON.stringify(window.CONTRACTORS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('contractors').set({entries:window.CONTRACTORS}).catch(e=>console.log('FB contractors:',e));}catch(e){}}}
 
 // PURCHASE_REQUESTS
 // New model: each PR has line items [{desc, qty, uom}], siteCode, projectCode, raisedBy, raisedByName, date, urgency, status, remarks
 // Legacy single-mat PRs: mat/qty fields kept for backward compat; items array preferred
-window.PURCHASE_REQUESTS=(()=>{try{const s=localStorage.getItem('1wc_prs');if(s)return JSON.parse(s);}catch(e){}return[
-  {id:'PR001',siteCode:'PERFETTI-RDR',siteName:'Perfetti Rudrapur',projectCode:'',items:[{desc:'Armaflex 25mm Insulation',qty:120,uom:'sqm'}],urgency:'high',raisedBy:'rohtash',raisedByName:'Rohtash',date:'2026-09-30',status:'RFQ Sent',remarks:''},
-  {id:'PR002',siteCode:'DMRC-TKD',siteName:'DMRC TKD',projectCode:'',items:[{desc:'GI Duct Sheet 22 Gauge',qty:800,uom:'kg'}],urgency:'med',raisedBy:'ajay',raisedByName:'Ajay',date:'2026-09-29',status:'PR Received',remarks:''},
-  {id:'PR003',siteCode:'GODREJ-NEST',siteName:'Godrej Nest',projectCode:'',items:[{desc:'AHU Filter F7',qty:6,uom:'Nos'}],urgency:'low',raisedBy:'vinay',raisedByName:'Vinay',date:'2026-09-25',status:'Ordered',remarks:''},
-  {id:'PR004',siteCode:'BIJWASAN-D',siteName:'Bijwasan Ducting',projectCode:'',items:[{desc:'GI Duct Sheet 24 Gauge',qty:500,uom:'kg'}],urgency:'med',raisedBy:'',raisedByName:'Parvez',date:'2026-09-26',status:'PR Received',remarks:''},
-];})();
-function savePRs(){try{localStorage.setItem('1wc_prs',JSON.stringify(window.PURCHASE_REQUESTS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('purchase_requests').set({entries:window.PURCHASE_REQUESTS}).catch(e=>console.log('FB prs:',e));}catch(e){}}}
+window.PURCHASE_REQUESTS=(()=>{try{const s=localStorage.getItem('1wc_prs');if(s)return JSON.parse(s);}catch(e){}return[];})();
+function savePRs(){suppressRefreshFor(4000);try{localStorage.setItem('1wc_prs',JSON.stringify(window.PURCHASE_REQUESTS));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('purchase_requests').set({entries:window.PURCHASE_REQUESTS}).catch(e=>console.log('FB prs:',e));}catch(e){}}}
 
 // COSTING_MANUAL — manual cost entries (salary, advance, overhead, etc.) per project
 window.COSTING_MANUAL=(()=>{try{const s=localStorage.getItem('1wc_costing_manual');if(s)return JSON.parse(s);}catch(e){}return[];})();
-function saveCostingManual(){try{localStorage.setItem('1wc_costing_manual',JSON.stringify(window.COSTING_MANUAL));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('costing_manual').set({entries:window.COSTING_MANUAL}).catch(e=>console.log('FB costing_manual:',e));}catch(e){}}}
+function saveCostingManual(){suppressRefreshFor(4000);try{localStorage.setItem('1wc_costing_manual',JSON.stringify(window.COSTING_MANUAL));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('costing_manual').set({entries:window.COSTING_MANUAL}).catch(e=>console.log('FB costing_manual:',e));}catch(e){}}}
 
 // PR number generator: PR-YYMMDD-NNN
 function genPRNumber(){
@@ -1267,15 +1262,15 @@ function saveVCList(){try{localStorage.setItem('1wc_vc',JSON.stringify(window.VC
 
 // SALES_INVOICES
 window.SALES_INVOICES=(()=>{try{const s=localStorage.getItem('1wc_sales_invoices');if(s)return JSON.parse(s);}catch(e){}return[];})();
-function saveSalesInvoices(){try{localStorage.setItem('1wc_sales_invoices',JSON.stringify(window.SALES_INVOICES));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('sales_invoices').set({entries:window.SALES_INVOICES}).catch(e=>console.log('FB sales_invoices:',e));}catch(e){}}}
+function saveSalesInvoices(){suppressRefreshFor(4000);try{localStorage.setItem('1wc_sales_invoices',JSON.stringify(window.SALES_INVOICES));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('sales_invoices').set({entries:window.SALES_INVOICES}).catch(e=>console.log('FB sales_invoices:',e));}catch(e){}}}
 
 // PETTY_CASH_ENTRIES
 window.PETTY_CASH_ENTRIES=(()=>{try{const s=localStorage.getItem('1wc_petty_cash');if(s)return JSON.parse(s);}catch(e){}return[];})();
-function savePettyCashEntries(){try{localStorage.setItem('1wc_petty_cash',JSON.stringify(window.PETTY_CASH_ENTRIES));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('petty_cash').set({entries:window.PETTY_CASH_ENTRIES}).catch(e=>console.log('FB petty_cash:',e));}catch(e){}}}
+function savePettyCashEntries(){suppressRefreshFor(4000);try{localStorage.setItem('1wc_petty_cash',JSON.stringify(window.PETTY_CASH_ENTRIES));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('petty_cash').set({entries:window.PETTY_CASH_ENTRIES}).catch(e=>console.log('FB petty_cash:',e));}catch(e){}}}
 
 // PURCHASE_REGISTER
 window.PURCHASE_REGISTER=(()=>{try{const s=localStorage.getItem('1wc_purchase_register');if(s)return JSON.parse(s);}catch(e){}return[];})();
-function savePurchaseRegister(){try{localStorage.setItem('1wc_purchase_register',JSON.stringify(window.PURCHASE_REGISTER));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('purchase_register').set({entries:window.PURCHASE_REGISTER}).catch(e=>console.log('FB purchase_register:',e));}catch(e){}}}
+function savePurchaseRegister(){suppressRefreshFor(4000);try{localStorage.setItem('1wc_purchase_register',JSON.stringify(window.PURCHASE_REGISTER));}catch(e){}if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('purchase_register').set({entries:window.PURCHASE_REGISTER}).catch(e=>console.log('FB purchase_register:',e));}catch(e){}}}
 
 // STOCK_ITEMS
 window.STOCK_ITEMS=(()=>{try{const s=localStorage.getItem('1wc_stock');if(s)return JSON.parse(s);}catch(e){}return[];})();
@@ -1729,11 +1724,17 @@ function attachAllListeners(){
 // Refresh the page the user is currently viewing if it's in the affected list
 // Debounced to avoid rapid re-renders when multiple listeners fire together
 let _refreshTimer=null;
+// Suppress listener-triggered page reloads for 4s after a local save
+// (prevents the Firestore echo-back from reloading the page you're on)
+window._suppressRefreshUntil=0;
+function suppressRefreshFor(ms){window._suppressRefreshUntil=Date.now()+(ms||4000);}
 function refreshCurrentPage(affectedPages){
   if(!window._currentPage)return;
   if(!affectedPages.includes(window._currentPage))return;
+  if(Date.now()<window._suppressRefreshUntil)return; // local write in progress — skip
   clearTimeout(_refreshTimer);
   _refreshTimer=setTimeout(()=>{
+    if(Date.now()<window._suppressRefreshUntil)return;
     try{showPage(window._currentPage,true);}catch(e){}
   },400);
 }
