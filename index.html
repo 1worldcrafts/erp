@@ -1657,10 +1657,18 @@ function listenStore(docId, mergeArrayFn){
 }
 
 function mergeById(cloudArr, localArr, setFn){
-  // Cloud is authoritative; add any local-only items not yet pushed
-  const merged=[...cloudArr];
-  (localArr||[]).forEach(item=>{if(item&&item.id&&!merged.find(c=>c.id===item.id))merged.push(item);});
-  setFn(merged);
+  // Cloud is fully authoritative — includes deletes.
+  // Only add local items that are genuinely newer than the cloud snapshot
+  // (i.e. saved within the last 8 seconds and not yet reflected in cloud).
+  const cloudIds=new Set((cloudArr||[]).map(x=>x&&x.id).filter(Boolean));
+  const recentLocalOnly=(localArr||[]).filter(item=>{
+    if(!item||!item.id)return false;
+    if(cloudIds.has(item.id))return false;
+    // Keep local-only if it was just created (id contains a recent timestamp)
+    const ts=parseInt((item.id||'').replace(/\D/g,'').slice(0,13));
+    return ts&&(Date.now()-ts)<8000;
+  });
+  setFn([...cloudArr, ...recentLocalOnly]);
 }
 
 function attachAllListeners(){
