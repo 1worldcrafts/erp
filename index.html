@@ -512,8 +512,15 @@ const DEPT_CODES=['SALES','PURCHASE','EXECUTION','ACCOUNTS','PLANNING','HR','ADM
 // Custom project codes — editable, persisted in localStorage
 let CUSTOM_CODES=[];
 try{const s=localStorage.getItem('1wc_custom_codes');if(s)CUSTOM_CODES=JSON.parse(s);}catch(e){}
-
 function saveCustomCodes(){try{localStorage.setItem('1wc_custom_codes',JSON.stringify(CUSTOM_CODES));}catch(e){}}
+
+// ── PROJECT MASTER ──────────────────────────────────────────
+// Central registry of all projects — code, name, site, client, contract value, dates
+window.PROJECTS=(()=>{try{const s=localStorage.getItem('1wc_projects');if(s)return JSON.parse(s);}catch(e){}return[];})();
+function saveProjects(){
+  try{localStorage.setItem('1wc_projects',JSON.stringify(window.PROJECTS));}catch(e){}
+  if(window.fbDb){try{window.fbDb.collection('1wc_stores').doc('projects').set({entries:window.PROJECTS}).catch(e=>console.log('FB projects:',e));}catch(e){}}
+}
 
 function saveSites(){
   try{ localStorage.setItem('1wc_sites', JSON.stringify(window.SITES)); }catch(e){}
@@ -522,11 +529,19 @@ function saveSites(){
 
 // Returns all project code options for a select — project codes + dept codes + custom
 function getProjectCodeOptions(includeBlank=true){
-  const siteOpts=(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code} – ${s.name}</option>`).join('');
+  const blank=includeBlank?'<option value="">— Select Project —</option>':'';
+  // Projects from Project Master (primary source)
+  const projOpts=(window.PROJECTS||[]).map(p=>`<option value="${p.code}">${p.code} – ${p.name} (${p.siteCode||''})</option>`).join('');
+  // Sites as fallback (for backward compat — sites with no project registered)
+  const usedSites=new Set((window.PROJECTS||[]).map(p=>p.siteCode));
+  const siteOpts=(window.SITES||[]).filter(s=>!usedSites.has(s.code)).map(s=>`<option value="${s.code}">${s.code} – ${s.name}</option>`).join('');
   const deptOpts=DEPT_CODES.map(d=>`<option value="${d}">🏢 ${d}</option>`).join('');
   const customOpts=CUSTOM_CODES.map(c=>`<option value="${c.code}">${c.code}${c.name?' – '+c.name:''}</option>`).join('');
-  const blank=includeBlank?'<option value="">— Select Code —</option>':'';
-  return blank+siteOpts+'<optgroup label="── Department ──">'+deptOpts+'</optgroup>'+(customOpts?'<optgroup label="── Custom ──">'+customOpts+'</optgroup>':'');
+  return blank
+    +(projOpts?'<optgroup label="── Projects ──">'+projOpts+'</optgroup>':'')
+    +(siteOpts?'<optgroup label="── Sites (no project yet) ──">'+siteOpts+'</optgroup>':'')
+    +'<optgroup label="── Department ──">'+deptOpts+'</optgroup>'
+    +(customOpts?'<optgroup label="── Custom ──">'+customOpts+'</optgroup>':'');
 }
 
 const SOPs={
@@ -1507,6 +1522,7 @@ const NAV={
     {id:'planning',icon:'📐',label:'Planning'},
     {id:'attendance',icon:'📅',label:'Attendance'},
     {section:'Admin'},
+    {id:'project-master',icon:'🗂️',label:'Project Master'},
     {id:'project-manager',icon:'🏗️',label:'Project Manager'},
     {section:'Tools'},
     {id:'quotation',icon:'📋',label:'Quotation Generator'},
@@ -1678,6 +1694,10 @@ function attachAllListeners(){
   listenStore('costing_manual',cloud=>{
     mergeById(cloud,window.COSTING_MANUAL,m=>{window.COSTING_MANUAL=m;saveCostingManual();});
     if(window.CU)refreshCurrentPage(['project-costing']);
+  });
+  listenStore('projects',cloud=>{
+    mergeById(cloud,window.PROJECTS,m=>{window.PROJECTS=m;saveProjects();});
+    if(window.CU)refreshCurrentPage(['project-master','accounts','project-costing']);
   });
   listenStore('pipeline',cloud=>{
     mergeById(cloud,SALES_PIPELINE,m=>{SALES_PIPELINE.length=0;m.forEach(i=>SALES_PIPELINE.push(i));savePipeline();});
@@ -1910,6 +1930,7 @@ function showPage(id,_silent){
     case 'ai-feedback': pageAIFeedback();break;
     case 'execution': pageExecution();break;
     case 'attendance': pageAttendance();break;
+    case 'project-master': pageProjectMaster();break;
     case 'project-manager': pageProjectManager();break;
     case 'ra-billing': pageRABilling();break;
     case 'quotation': pageQuotation();break;
@@ -2969,21 +2990,39 @@ function pageAccounts(){
   </div>
 
   <div class="acc-tab" id="acc-import" style="display:none">
-    <div class="card">
-      <div class="card-title">📥 Import Excel to Ledger</div>
-      <div class="info-box">Upload an Excel (.xlsx) file. Expected columns: <strong>date, desc, project, type, amount, party</strong></div>
-      <div class="upload-zone" onclick="document.getElementById('ledger-import-file').click()" style="margin-bottom:16px">
-        <div class="upload-icon">📊</div>
-        <div>Click to upload Excel file (.xlsx)</div>
-        <input type="file" id="ledger-import-file" accept=".xlsx,.xls" style="display:none" onchange="previewLedgerImport(this)">
+    <div class="info-box" style="margin-bottom:12px">📥 <strong>Import historical data</strong> — upload your existing Excel sheets from this financial year. The system will auto-detect columns, show a preview, and let you confirm before saving. Duplicate entries (same invoice no / same date+amount) are skipped automatically.</div>
+    <!-- Store selector -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+      <button class="btn-primary btn-sm" id="imp-btn-si" onclick="selectImportStore('si')">📋 Sales Invoices</button>
+      <button class="btn-secondary btn-sm" id="imp-btn-pr" onclick="selectImportStore('pr')">🛒 Purchase Register</button>
+      <button class="btn-secondary btn-sm" id="imp-btn-pc" onclick="selectImportStore('pc')">💵 Petty Cash</button>
+    </div>
+    <div class="card" id="imp-card-si">
+      <div class="card-title">📋 Import Sales Invoices</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Expected columns (any order, names are flexible): <strong>Invoice No, Date, Client Name, Site Code, Project Code, Basic Value, GST%, Total Value, Due Date, Status</strong></div>
+      <div class="upload-zone" onclick="document.getElementById('imp-file-si').click()" style="margin-bottom:12px">
+        <div class="upload-icon">📊</div><div>Click to upload Excel (.xlsx / .xls) or CSV</div>
+        <input type="file" id="imp-file-si" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleImportFile(this,'si')">
       </div>
-      <div id="ledger-import-preview"></div>
-      <div id="ledger-import-actions" style="display:none">
-        <div class="btn-row">
-          <button class="btn-primary" onclick="confirmLedgerImport()">✓ Confirm Import</button>
-          <button class="btn-secondary" onclick="document.getElementById('ledger-import-preview').innerHTML='';document.getElementById('ledger-import-actions').style.display='none'">Cancel</button>
-        </div>
+      <div id="imp-preview-si"></div>
+    </div>
+    <div class="card" id="imp-card-pr" style="display:none">
+      <div class="card-title">🛒 Import Purchase Register</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Expected columns: <strong>Date, Vendor Name, Site Code, Project Code, Description, Basic Value, GST%, Total Value, Paid Amount, Status</strong></div>
+      <div class="upload-zone" onclick="document.getElementById('imp-file-pr').click()" style="margin-bottom:12px">
+        <div class="upload-icon">📊</div><div>Click to upload Excel (.xlsx / .xls) or CSV</div>
+        <input type="file" id="imp-file-pr" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleImportFile(this,'pr')">
       </div>
+      <div id="imp-preview-pr"></div>
+    </div>
+    <div class="card" id="imp-card-pc" style="display:none">
+      <div class="card-title">💵 Import Petty Cash</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Expected columns: <strong>Date, Entry Type (debit/credit), Credit Mode, Site Code, Project Code, Category, Amount, Paid To, Narration</strong></div>
+      <div class="upload-zone" onclick="document.getElementById('imp-file-pc').click()" style="margin-bottom:12px">
+        <div class="upload-icon">📊</div><div>Click to upload Excel (.xlsx / .xls) or CSV</div>
+        <input type="file" id="imp-file-pc" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleImportFile(this,'pc')">
+      </div>
+      <div id="imp-preview-pc"></div>
     </div>
   </div>
 
@@ -3259,6 +3298,299 @@ function confirmLedgerImport(){
   document.getElementById('ledger-import-preview').innerHTML=`<div class="info-box" style="color:var(--green)">✅ ${added} rows imported to Ledger</div>`;
   document.getElementById('ledger-import-actions').style.display='none';
   showToast(added+' rows imported','success');
+}
+
+// ======================== SMART EXCEL IMPORTER ========================
+// Fuzzy column matcher — finds best match for a target field from Excel headers
+function _matchCol(headers, candidates){
+  const h=headers.map(x=>(x||'').toLowerCase().replace(/[\s_\-\.]/g,''));
+  for(const c of candidates){
+    const t=c.toLowerCase().replace(/[\s_\-\.]/g,'');
+    const idx=h.findIndex(x=>x===t||x.includes(t)||t.includes(x));
+    if(idx>=0)return headers[idx];
+  }
+  return null;
+}
+function _v(row,col){return col?String(row[col]||'').trim():'';}
+function _n(row,col){const v=_v(row,col);return parseFloat(v.replace(/[₹,]/g,''))||0;}
+function _d(row,col){
+  const v=_v(row,col);if(!v)return '';
+  // Try DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD, Excel serial
+  const p1=v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if(p1){const y=p1[3].length===2?'20'+p1[3]:p1[3];return `${y}-${p1[2].padStart(2,'0')}-${p1[1].padStart(2,'0')}`;}
+  const p2=v.match(/^\d{4}-\d{2}-\d{2}$/);if(p2)return v;
+  const serial=parseFloat(v);
+  if(!isNaN(serial)&&serial>40000&&serial<60000){
+    const d=new Date((serial-25569)*86400*1000);
+    return d.toISOString().split('T')[0];
+  }
+  return v;
+}
+
+function selectImportStore(store){
+  ['si','pr','pc'].forEach(s=>{
+    document.getElementById('imp-card-'+s).style.display=s===store?'':'none';
+    document.getElementById('imp-btn-'+s).className=s===store?'btn-primary btn-sm':'btn-secondary btn-sm';
+  });
+}
+
+function handleImportFile(inp, store){
+  if(!inp.files[0])return;
+  const file=inp.files[0];
+  const isCsv=file.name.toLowerCase().endsWith('.csv');
+  if(isCsv){
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const lines=e.target.result.split('\n').filter(l=>l.trim());
+      if(!lines.length)return;
+      const headers=lines[0].split(',').map(h=>h.replace(/^"|"$/g,'').trim());
+      const rows=lines.slice(1).map(line=>{
+        const vals=line.split(',').map(v=>v.replace(/^"|"$/g,'').trim());
+        const obj={};headers.forEach((h,i)=>obj[h]=vals[i]||'');return obj;
+      }).filter(r=>Object.values(r).some(v=>v));
+      processImportRows(rows, store);
+    };
+    reader.readAsText(file);
+  } else {
+    importFromExcel(file, rows=>processImportRows(rows, store));
+  }
+}
+
+function processImportRows(rows, store){
+  if(!rows||!rows.length){
+    document.getElementById('imp-preview-'+store).innerHTML='<div class="warn-box">No rows found in this file.</div>';return;
+  }
+  // Store raw rows for project mapping step
+  window['_importRaw_'+store]=rows;
+  // Show project mapping screen before proceeding
+  showProjectMapping(rows, store);
+}
+
+function showProjectMapping(rows, store){
+  const headers=Object.keys(rows[0]);
+  const cSite=_matchCol(headers,['sitecode','site code','site','project site']);
+  const cClient=store==='si'
+    ?_matchCol(headers,['client','client name','party','customer','buyer'])
+    :_matchCol(headers,['vendor','vendor name','supplier','party','seller']);
+
+  // Build unique site+client combos
+  const combos=new Map();
+  rows.forEach(r=>{
+    const site=_v(r,cSite)||'(no site)';
+    const party=_v(r,cClient)||'(no client/vendor)';
+    const key=site+'|||'+party;
+    if(!combos.has(key))combos.set(key,{site,party,count:0});
+    combos.get(key).count++;
+  });
+
+  const projOpts=(window.PROJECTS||[]).map(p=>`<option value="${p.code}">${p.code} – ${p.name}</option>`).join('');
+  const siteOpts=(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code}</option>`).join('');
+  const noProjects=!(window.PROJECTS||[]).length;
+
+  const el=document.getElementById('imp-preview-'+store);
+  el.innerHTML=`
+  <div class="warn-box" style="margin-bottom:12px">
+    📋 <strong>Step 1: Assign Project Codes</strong> — map each Site + Client/Vendor combination to a project.
+    ${noProjects?`<br><br>⚠️ You have no projects in Project Master yet. <a href="#" onclick="showPage('project-master')" style="color:var(--blue)">Go add your projects first</a>, then come back to import.`:''}
+  </div>
+  <div style="overflow-x:auto;margin-bottom:12px">
+  <table>
+    <thead><tr><th>Site (from file)</th><th>Client / Vendor (from file)</th><th>Rows</th><th>Assign Project Code</th></tr></thead>
+    <tbody>
+    ${[...combos.entries()].map(([key,c],i)=>`
+    <tr>
+      <td><span class="tag tag-blue">${c.site}</span></td>
+      <td>${c.party}</td>
+      <td style="text-align:center;font-weight:700">${c.count}</td>
+      <td>
+        <select id="imp-proj-map-${store}-${i}" data-key="${key}" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--navy2);color:var(--text);font-size:12px;min-width:200px">
+          <option value="">— Pick Project —</option>
+          ${projOpts}
+          <optgroup label="── Sites ──">${siteOpts}</optgroup>
+        </select>
+      </td>
+    </tr>`).join('')}
+    </tbody>
+  </table>
+  </div>
+  <div class="btn-row">
+    <button class="btn-primary" onclick="applyProjectMapping('${store}',${[...combos.entries()].length})">Next: Preview Rows →</button>
+    <button class="btn-secondary" onclick="document.getElementById('imp-preview-${store}').innerHTML=''">Cancel</button>
+  </div>`;
+}
+
+function applyProjectMapping(store, comboCount){
+  const rows=window['_importRaw_'+store]||[];
+  const headers=Object.keys(rows[0]||{});
+  const cSite=_matchCol(headers,['sitecode','site code','site','project site']);
+  const cClient=store==='si'
+    ?_matchCol(headers,['client','client name','party','customer','buyer'])
+    :_matchCol(headers,['vendor','vendor name','supplier','party','seller']);
+
+  // Build mapping: "site|||party" → project code
+  const mapping={};
+  for(let i=0;i<comboCount;i++){
+    const sel=document.getElementById(`imp-proj-map-${store}-${i}`);
+    if(sel&&sel.value)mapping[sel.dataset.key]=sel.value;
+  }
+
+  // Check all combos are mapped
+  const unmapped=[...document.querySelectorAll(`[id^="imp-proj-map-${store}-"]`)].filter(s=>!s.value);
+  if(unmapped.length){showToast(`Please assign project codes to all ${unmapped.length} unmapped rows`,'error');return;}
+
+  // Inject project code into each row
+  const enriched=rows.map(r=>{
+    const site=_v(r,cSite)||'(no site)';
+    const party=_v(r,cClient)||'(no client/vendor)';
+    return {...r, _projectCode:mapping[site+'|||'+party]||''};
+  });
+
+  // Now proceed with normal column mapping
+  processEnrichedRows(enriched, store);
+}
+
+function processEnrichedRows(rows, store){
+  if(!rows||!rows.length){
+    document.getElementById('imp-preview-'+store).innerHTML='<div class="warn-box">No rows found.</div>';return;
+  }
+  const headers=Object.keys(rows[0]);
+  let mapped=[], skipped=0;
+
+  if(store==='si'){
+    const cInv=_matchCol(headers,['invoiceno','invoice no','invoice number','inv no','bill no','billno']);
+    const cDate=_matchCol(headers,['date','invoice date','bill date']);
+    const cClient=_matchCol(headers,['client','client name','party','customer','buyer']);
+    const cSite=_matchCol(headers,['sitecode','site code','site','project site']);
+    const cProj=_matchCol(headers,['projectcode','project code','project','job code']);
+    const cBasic=_matchCol(headers,['basic','basic value','basic amount','amount before gst','taxable value']);
+    const cGstPct=_matchCol(headers,['gst%','gst pct','gst rate','tax rate','gst']);
+    const cTotal=_matchCol(headers,['total','total value','grand total','invoice value','amount']);
+    const cDue=_matchCol(headers,['duedate','due date','payment due','payment due date']);
+    const cStatus=_matchCol(headers,['status','payment status','paid/pending']);
+    rows.forEach((r,i)=>{
+      const invNo=_v(r,cInv)||('IMP-SI-'+Date.now()+'_'+i);
+      const date=_d(r,cDate);
+      const basic=_n(r,cBasic);
+      const total=_n(r,cTotal)||(basic*1.18);
+      const gstPct=_n(r,cGstPct)||18;
+      const gstAmt=total-basic||basic*(gstPct/100);
+      // Duplicate check — same invoiceNo
+      const exists=(window.SALES_INVOICES||[]).find(x=>x.invoiceNo&&x.invoiceNo===invNo&&!invNo.startsWith('IMP-SI-'));
+      if(exists){skipped++;return;}
+      const rawStatus=(_v(r,cStatus)||'').toLowerCase();
+      const paymentStatus=rawStatus.includes('paid')||rawStatus.includes('recv')||rawStatus.includes('received')?'paid':'pending';
+      mapped.push({id:'si'+Date.now()+'_'+i, invoiceNo:invNo, date, clientName:_v(r,cClient),
+        siteCode:_v(r,cSite), projectCode:_v(r,cProj)||r._projectCode||'', basicValue:basic, gstPct, gstAmt, totalValue:total,
+        paymentDueDate:_d(r,cDue), paymentStatus, notes:'Imported', _importRow:i});
+    });
+    renderImportPreview(mapped, skipped, store, ['Invoice No','Date','Client','Site','Basic','Total','Status'],
+      m=>[m.invoiceNo,m.date,m.clientName,m.siteCode,fmtINR(m.basicValue),fmtINR(m.totalValue),m.paymentStatus]);
+  }
+
+  else if(store==='pr'){
+    const cDate=_matchCol(headers,['date','bill date','invoice date','purchase date']);
+    const cVendor=_matchCol(headers,['vendor','vendor name','supplier','party','seller']);
+    const cSite=_matchCol(headers,['sitecode','site code','site','project site']);
+    const cProj=_matchCol(headers,['projectcode','project code','project']);
+    const cDesc=_matchCol(headers,['description','item','material','particulars','narration']);
+    const cBasic=_matchCol(headers,['basic','basic value','basic amount','taxable value','amount before gst']);
+    const cGstPct=_matchCol(headers,['gst%','gst pct','gst rate','tax rate','gst']);
+    const cTotal=_matchCol(headers,['total','total value','grand total','amount','invoice amount']);
+    const cPaid=_matchCol(headers,['paid','paid amount','amount paid','payment made']);
+    const cStatus=_matchCol(headers,['status','payment status']);
+    rows.forEach((r,i)=>{
+      const date=_d(r,cDate);
+      const basic=_n(r,cBasic);
+      const total=_n(r,cTotal)||(basic*1.18);
+      const gstPct=_n(r,cGstPct)||18;
+      const gstAmt=total-basic||basic*(gstPct/100);
+      const paidAmt=_n(r,cPaid)||0;
+      // Duplicate check — same vendor+date+total
+      const exists=(window.PURCHASE_REGISTER||[]).find(x=>x.date===date&&x.vendorName===_v(r,cVendor)&&x.totalValue===total);
+      if(exists){skipped++;return;}
+      const rawStatus=(_v(r,cStatus)||'').toLowerCase();
+      const paymentStatus=rawStatus.includes('paid')||paidAmt>=total?'paid':paidAmt>0?'partial':'pending';
+      mapped.push({id:'pr'+Date.now()+'_'+i, date, vendorName:_v(r,cVendor),
+        siteCode:_v(r,cSite), projectCode:_v(r,cProj)||r._projectCode||'', description:_v(r,cDesc),
+        basicValue:basic, gstPct, gstAmt, totalValue:total, paidAmt, paymentStatus, _importRow:i});
+    });
+    renderImportPreview(mapped, skipped, store, ['Date','Vendor','Site','Description','Basic','Total','Status'],
+      m=>[m.date,m.vendorName,m.siteCode,m.description,fmtINR(m.basicValue),fmtINR(m.totalValue),m.paymentStatus]);
+  }
+
+  else if(store==='pc'){
+    const cDate=_matchCol(headers,['date']);
+    const cType=_matchCol(headers,['type','entry type','dr/cr','debit/credit','transaction type']);
+    const cMode=_matchCol(headers,['mode','credit mode','payment mode','cash/bank']);
+    const cSite=_matchCol(headers,['sitecode','site code','site']);
+    const cProj=_matchCol(headers,['projectcode','project code','project']);
+    const cCat=_matchCol(headers,['category','debit category','head','expense head','particulars']);
+    const cAmt=_matchCol(headers,['amount','debit','credit','value']);
+    const cPaidTo=_matchCol(headers,['paidto','paid to','party','recipient','name']);
+    const cNarr=_matchCol(headers,['narration','description','remarks','details','narr']);
+    rows.forEach((r,i)=>{
+      const date=_d(r,cDate);
+      const amount=_n(r,cAmt);
+      if(!amount)return; // skip zero rows
+      const rawType=(_v(r,cType)||'').toLowerCase();
+      const entryType=rawType.includes('credit')||rawType.includes('cr')||rawType.includes('in')?'credit':'debit';
+      // Duplicate check
+      const exists=(window.PETTY_CASH_ENTRIES||[]).find(x=>x.date===date&&x.amount===amount&&x.paidTo===_v(r,cPaidTo));
+      if(exists){skipped++;return;}
+      mapped.push({id:'pc'+Date.now()+'_'+i, date, entryType, creditMode:_v(r,cMode)||'Cash',
+        siteCode:_v(r,cSite), projectCode:_v(r,cProj)||r._projectCode||'', debitCategory:_v(r,cCat),
+        amount, paidTo:_v(r,cPaidTo), narration:_v(r,cNarr), _importRow:i});
+    });
+    renderImportPreview(mapped, skipped, store, ['Date','Type','Site','Category','Amount','Paid To','Narration'],
+      m=>[m.date,m.entryType,m.siteCode,m.debitCategory,fmtINR(m.amount),m.paidTo,m.narration]);
+  }
+}
+
+function renderImportPreview(mapped, skipped, store, cols, rowFn){
+  const el=document.getElementById('imp-preview-'+store);
+  if(!el)return;
+  window['_importPending_'+store]=mapped;
+  if(!mapped.length){
+    el.innerHTML=`<div class="warn-box">⚠️ No new rows to import (${skipped} duplicate rows skipped).</div>`;return;
+  }
+  const preview=mapped.slice(0,10);
+  el.innerHTML=`
+  <div class="info-box" style="margin-bottom:8px">
+    ✅ <strong>${mapped.length} rows ready to import</strong>${skipped?` · ${skipped} duplicates skipped`:''} · Showing first ${Math.min(10,mapped.length)}
+  </div>
+  <div style="overflow-x:auto;margin-bottom:12px">
+    <table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+    <tbody>${preview.map(m=>`<tr>${rowFn(m).map(v=>`<td style="font-size:11px">${v||'—'}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>
+  </div>
+  ${mapped.length>10?`<div style="font-size:12px;color:var(--text2);margin-bottom:12px">...and ${mapped.length-10} more rows</div>`:''}
+  <div class="btn-row">
+    <button class="btn-primary" onclick="confirmImport('${store}')">✅ Import All ${mapped.length} Rows</button>
+    <button class="btn-secondary" onclick="document.getElementById('imp-preview-${store}').innerHTML='';window['_importPending_${store}']=[]">✕ Cancel</button>
+  </div>`;
+}
+
+function confirmImport(store){
+  const rows=window['_importPending_'+store]||[];
+  if(!rows.length){showToast('Nothing to import','info');return;}
+  let added=0;
+  rows.forEach(r=>{
+    const clean={...r};delete clean._importRow;
+    if(store==='si'){window.SALES_INVOICES.push(clean);added++;}
+    else if(store==='pr'){window.PURCHASE_REGISTER.push(clean);added++;}
+    else if(store==='pc'){window.PETTY_CASH_ENTRIES.push(clean);added++;}
+  });
+  if(store==='si')saveSalesInvoices();
+  else if(store==='pr')savePurchaseRegister();
+  else if(store==='pc')savePettyCashEntries();
+  window['_importPending_'+store]=[];
+  document.getElementById('imp-preview-'+store).innerHTML=
+    `<div class="info-box" style="color:var(--green);font-weight:700">✅ ${added} rows imported successfully! Go to the ${store==='si'?'Sales Invoices':store==='pr'?'Purchase Register (see Purchase tab)':'Petty Cash'} tab to see them.</div>`;
+  showToast('✅ '+added+' rows imported!','success');
+  // Refresh relevant tabs
+  if(store==='si'){renderSalesInvoices();renderLedger();renderPLAuto();}
+  else if(store==='pr'){renderPurchaseRegister();}
+  else if(store==='pc'){renderPettyCash();renderLedger();}
 }
 
 // ======================== PURCHASE PAGE ========================
@@ -5903,6 +6235,163 @@ async function attSaveToCloud(){
 // ═══════════════════════════════════════════════════════
 // GLOBAL PROJECT / SITE MANAGER
 // ═══════════════════════════════════════════════════════
+// ======================== PROJECT MASTER ========================
+function pageProjectMaster(){
+  const c=document.getElementById('content');
+  function render(){
+    const projs=window.PROJECTS||[];
+    c.innerHTML=`
+    <div class="page-title">🗂️ Project Master</div>
+    <div class="info-box" style="margin-bottom:12px">Central registry of all projects. Every project gets a unique code used across Sales, Purchase, Petty Cash and Costing.</div>
+    <div class="btn-row" style="margin-bottom:16px">
+      <button class="btn-primary" onclick="openAddProject()">+ New Project</button>
+      <button class="btn-secondary btn-sm" onclick="exportToExcel((window.PROJECTS||[]).map(p=>({Code:p.code,Name:p.name,Site:p.siteCode,Client:p.clientName,'Contract Value':p.contractValue,Status:p.status,'Start Date':p.startDate,'End Date':p.endDate})),'1WC_Projects','Projects')">📥 Export Excel</button>
+    </div>
+    ${!projs.length?`<div class="card" style="text-align:center;padding:40px;color:var(--text2)">No projects yet. Click "+ New Project" to add your first project.</div>`:`
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>Code</th><th>Project Name</th><th>Site</th><th>Client</th><th>Contract Value</th><th>Status</th><th>Start</th><th>End</th><th>Actions</th></tr></thead>
+      <tbody>
+      ${projs.map((p,i)=>`<tr>
+        <td><strong>${p.code}</strong></td>
+        <td>${p.name}</td>
+        <td><span class="tag tag-blue">${p.siteCode||'—'}</span></td>
+        <td>${p.clientName||'—'}</td>
+        <td style="text-align:right">${p.contractValue?fmtINR(p.contractValue):'—'}</td>
+        <td><span class="tag ${p.status==='active'?'tag-green':p.status==='completed'?'tag-blue':'tag-gray'}">${p.status||'active'}</span></td>
+        <td style="font-size:11px">${p.startDate||'—'}</td>
+        <td style="font-size:11px">${p.endDate||'—'}</td>
+        <td>
+          <button class="btn-secondary btn-xs" onclick="openEditProject(${i})">✏️</button>
+          <button class="btn-secondary btn-xs" style="color:var(--red)" onclick="deleteProject(${i})">🗑️</button>
+        </td>
+      </tr>`).join('')}
+      </tbody>
+    </table></div>`}`;
+  }
+  render();
+  window._reRenderProjectMaster=render;
+}
+
+function openAddProject(){
+  const siteOpts=(window.SITES||[]).map(s=>`<option value="${s.code}">${s.code} – ${s.name}</option>`).join('');
+  openModal('➕ New Project',`
+    <div class="eod-form">
+      <div class="row2">
+        <div class="form-row"><label>Project Code *</label><input id="pm-code" placeholder="e.g. DMRC-TKD-HVAC" style="text-transform:uppercase"/></div>
+        <div class="form-row"><label>Project Name *</label><input id="pm-name" placeholder="e.g. DMRC TKD HVAC Works"/></div>
+      </div>
+      <div class="row2">
+        <div class="form-row"><label>Site</label>
+          <select id="pm-site"><option value="">— Select Site —</option>${siteOpts}</select>
+        </div>
+        <div class="form-row"><label>Client Name</label><input id="pm-client" placeholder="e.g. DMRC"/></div>
+      </div>
+      <div class="row2">
+        <div class="form-row"><label>Contract Value (₹)</label><input id="pm-value" type="number" placeholder="0"/></div>
+        <div class="form-row"><label>Status</label>
+          <select id="pm-status">
+            <option value="active">🟢 Active</option>
+            <option value="completed">✅ Completed</option>
+            <option value="upcoming">📅 Upcoming</option>
+            <option value="on-hold">⏸️ On Hold</option>
+          </select>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="form-row"><label>Start Date</label><input id="pm-start" type="date"/></div>
+        <div class="form-row"><label>Expected End Date</label><input id="pm-end" type="date"/></div>
+      </div>
+      <div class="form-row"><label>Description / Scope</label><textarea id="pm-desc" rows="2" placeholder="Brief scope of work..."></textarea></div>
+      <div class="btn-row"><button class="btn-primary" onclick="saveNewProject()">Save Project</button><button class="btn-secondary" onclick="closeModal()">Cancel</button></div>
+    </div>`);
+}
+
+function saveNewProject(){
+  const code=(document.getElementById('pm-code')?.value||'').trim().toUpperCase();
+  const name=(document.getElementById('pm-name')?.value||'').trim();
+  if(!code||!name){showToast('Project Code and Name are required','error');return;}
+  if((window.PROJECTS||[]).find(p=>p.code===code)){showToast('Project code already exists','error');return;}
+  const proj={
+    id:'proj_'+Date.now(), code, name,
+    siteCode:document.getElementById('pm-site')?.value||'',
+    clientName:document.getElementById('pm-client')?.value||'',
+    contractValue:parseFloat(document.getElementById('pm-value')?.value)||0,
+    status:document.getElementById('pm-status')?.value||'active',
+    startDate:document.getElementById('pm-start')?.value||'',
+    endDate:document.getElementById('pm-end')?.value||'',
+    desc:document.getElementById('pm-desc')?.value||'',
+    addedBy:window.CU||'',
+    addedAt:new Date().toISOString()
+  };
+  if(!window.PROJECTS)window.PROJECTS=[];
+  window.PROJECTS.push(proj);
+  saveProjects();
+  closeModal();
+  showToast('✅ Project "'+code+'" added','success');
+  if(window._reRenderProjectMaster)window._reRenderProjectMaster();
+}
+
+function openEditProject(idx){
+  const p=(window.PROJECTS||[])[idx];
+  if(!p)return;
+  const siteOpts=(window.SITES||[]).map(s=>`<option value="${s.code}" ${s.code===p.siteCode?'selected':''}>${s.code} – ${s.name}</option>`).join('');
+  openModal('✏️ Edit Project',`
+    <div class="eod-form">
+      <div class="row2">
+        <div class="form-row"><label>Project Code</label><input id="pm-code" value="${p.code}" style="text-transform:uppercase"/></div>
+        <div class="form-row"><label>Project Name</label><input id="pm-name" value="${p.name}"/></div>
+      </div>
+      <div class="row2">
+        <div class="form-row"><label>Site</label><select id="pm-site"><option value="">—</option>${siteOpts}</select></div>
+        <div class="form-row"><label>Client Name</label><input id="pm-client" value="${p.clientName||''}"/></div>
+      </div>
+      <div class="row2">
+        <div class="form-row"><label>Contract Value (₹)</label><input id="pm-value" type="number" value="${p.contractValue||0}"/></div>
+        <div class="form-row"><label>Status</label>
+          <select id="pm-status">
+            <option value="active" ${p.status==='active'?'selected':''}>🟢 Active</option>
+            <option value="completed" ${p.status==='completed'?'selected':''}>✅ Completed</option>
+            <option value="upcoming" ${p.status==='upcoming'?'selected':''}>📅 Upcoming</option>
+            <option value="on-hold" ${p.status==='on-hold'?'selected':''}>⏸️ On Hold</option>
+          </select>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="form-row"><label>Start Date</label><input id="pm-start" type="date" value="${p.startDate||''}"/></div>
+        <div class="form-row"><label>End Date</label><input id="pm-end" type="date" value="${p.endDate||''}"/></div>
+      </div>
+      <div class="form-row"><label>Description</label><textarea id="pm-desc" rows="2">${p.desc||''}</textarea></div>
+      <div class="btn-row"><button class="btn-primary" onclick="saveEditProject(${idx})">Save Changes</button><button class="btn-secondary" onclick="closeModal()">Cancel</button></div>
+    </div>`);
+}
+
+function saveEditProject(idx){
+  const p=(window.PROJECTS||[])[idx];
+  if(!p)return;
+  p.code=(document.getElementById('pm-code')?.value||p.code).trim().toUpperCase();
+  p.name=document.getElementById('pm-name')?.value||p.name;
+  p.siteCode=document.getElementById('pm-site')?.value||'';
+  p.clientName=document.getElementById('pm-client')?.value||'';
+  p.contractValue=parseFloat(document.getElementById('pm-value')?.value)||0;
+  p.status=document.getElementById('pm-status')?.value||'active';
+  p.startDate=document.getElementById('pm-start')?.value||'';
+  p.endDate=document.getElementById('pm-end')?.value||'';
+  p.desc=document.getElementById('pm-desc')?.value||'';
+  saveProjects();
+  closeModal();
+  showToast('✅ Project updated','success');
+  if(window._reRenderProjectMaster)window._reRenderProjectMaster();
+}
+
+function deleteProject(idx){
+  if(!confirm('Delete this project? This does not delete any invoices or entries linked to it.'))return;
+  (window.PROJECTS||[]).splice(idx,1);
+  saveProjects();
+  showToast('Project deleted','success');
+  if(window._reRenderProjectMaster)window._reRenderProjectMaster();
+}
+
 function pageProjectManager(){
   // load sites from localStorage if available
   if(!window.SITES||!window.SITES.length){
