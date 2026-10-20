@@ -1357,10 +1357,47 @@ function downloadAsPDF(content,filename){
   showToast('PDF opened in new tab — click Print / Save as PDF','success');
 }
 function downloadQuotationPDF(){
-  const el=document.getElementById('qt-body');
-  if(!el){showToast('Build the quotation first','info');return;}
-  const content=`<h2>Quotation</h2>${el.innerHTML}`;
-  downloadAsPDF(content,'1WC_Quotation');
+  if(!window.qtItems||!window.qtItems.length){showToast('Build the quotation first','info');return;}
+  const isSupply=window.qtMode==='supply';
+  const total=window.qtItems.reduce((s,i)=>s+i.qty*i.rate,0);
+  const gst=total*0.18;
+  const qEl=document.getElementById('qt-body');
+  const qNo=qEl?qEl.querySelector('input')?.value||'—':'—';
+  const dateVal=qEl?qEl.querySelectorAll('input')[1]?.value||'':'';
+  const clientName=document.getElementById('qt-client')?.value||'—';
+  const projEl=qEl?qEl.querySelectorAll('.form-row input')[3]?.value||'':'' ;
+  const addrEl=qEl?qEl.querySelector('input[placeholder="Client address"]')?.value||'':'';
+  const validity=qEl?qEl.querySelector('input[value="30 days"]')?.value||'30 days':'30 days';
+  const payTerms=qEl?qEl.querySelectorAll('.row2')[2]?.querySelectorAll('input')[1]?.value||'':'';
+  const tcText=qEl?qEl.querySelector('textarea')?.value||'':'';
+  const rows=window.qtItems.map((it,idx)=>`
+    <tr>
+      <td style="text-align:center">${idx+1}</td>
+      <td>${it.desc||'—'}</td>
+      <td style="text-align:center">${it.unit||'Lot'}</td>
+      <td style="text-align:center">${it.qty}</td>
+      <td style="text-align:right">₹${Number(it.rate).toLocaleString('en-IN')}</td>
+      ${isSupply?`<td style="text-align:right">₹${(it.qty*it.rate*0.6).toFixed(0)}</td><td style="text-align:right">₹${(it.qty*it.rate*0.4).toFixed(0)}</td>`:''}
+      <td style="text-align:right;font-weight:700">₹${(it.qty*it.rate).toLocaleString('en-IN')}</td>
+    </tr>`).join('');
+  const content=`
+  <table style="margin-bottom:16px">
+    <tr><th style="background:#f47c20">Quote No</th><td>${qNo}</td><th style="background:#f47c20">Date</th><td>${dateVal}</td></tr>
+    <tr><th>Client</th><td>${clientName}</td><th>Project</th><td>${projEl}</td></tr>
+    ${addrEl?`<tr><th>Address</th><td colspan="3">${addrEl}</td></tr>`:''}
+  </table>
+  <table>
+    <thead><tr style="background:#1a1a2e;color:#fff"><th>#</th><th>Description</th><th>Unit</th><th>Qty</th><th>Rate (₹)</th>${isSupply?'<th>Supply (₹)</th><th>Install (₹)</th>':''}<th>Amount (₹)</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot>
+      <tr><td colspan="${isSupply?7:5}" style="text-align:right;border:none;padding-top:8px">Subtotal:</td><td style="text-align:right;font-weight:700">₹${total.toLocaleString('en-IN')}</td></tr>
+      <tr><td colspan="${isSupply?7:5}" style="text-align:right;border:none">GST @18%:</td><td style="text-align:right;font-weight:700">₹${gst.toLocaleString('en-IN')}</td></tr>
+      <tr><td colspan="${isSupply?7:5}" style="text-align:right;border:none;font-size:15px;font-weight:900;color:#1a1a2e">Grand Total:</td><td style="text-align:right;font-size:15px;font-weight:900;color:#1a1a2e">₹${(total+gst).toLocaleString('en-IN')}</td></tr>
+    </tfoot>
+  </table>
+  ${validity||payTerms?`<table style="margin-top:12px"><tr><th>Validity</th><td>${validity}</td><th>Payment Terms</th><td>${payTerms}</td></tr></table>`:''}
+  ${tcText?`<div style="margin-top:12px"><strong>Terms &amp; Conditions:</strong><div style="font-size:12px;margin-top:6px;white-space:pre-line">${tcText}</div></div>`:''}`;
+  downloadAsPDF(content,'1WC_Quotation_'+qNo);
 }
 function downloadRABillPDF(){
   const site=document.getElementById('ra-site')?.value||'—';
@@ -6383,45 +6420,47 @@ function pageQuotation(){
     const gst=total*0.18;
     document.getElementById('qt-body').innerHTML=`
     <div class="row2" style="margin-bottom:12px">
-      <div class="form-row"><label>Quote No</label><input value="${qNo}" style="font-weight:700"/></div>
-      <div class="form-row"><label>Date</label><input type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
+      <div class="form-row"><label style="color:#1a1a2e">Quote No</label><input value="${qNo}" style="font-weight:700;color:#1a1a2e;background:#fff;border:1px solid #ddd;border-radius:6px;padding:6px 10px"/></div>
+      <div class="form-row"><label style="color:#1a1a2e">Date</label><input type="date" value="${new Date().toISOString().split('T')[0]}" style="color:#1a1a2e;background:#fff;border:1px solid #ddd;border-radius:6px;padding:6px 10px"/></div>
     </div>
     <div class="row2" style="margin-bottom:12px">
-      <div class="form-row"><label>Client Name</label><input id="qt-client" placeholder="Client company"/></div>
-      <div class="form-row"><label>Project / Site</label><input placeholder="Project description"/></div>
+      <div class="form-row"><label style="color:#1a1a2e">Client Name</label><input id="qt-client" placeholder="Client company" style="color:#1a1a2e;background:#fff;border:1px solid #ddd;border-radius:6px;padding:6px 10px"/></div>
+      <div class="form-row"><label style="color:#1a1a2e">Project / Site</label><input placeholder="Project description" style="color:#1a1a2e;background:#fff;border:1px solid #ddd;border-radius:6px;padding:6px 10px"/></div>
     </div>
-    <div class="form-row" style="margin-bottom:12px"><label>Address</label><input placeholder="Client address"/></div>
-    <table class="data-table" style="font-size:13px;margin-bottom:8px">
-      <thead><tr><th>#</th><th>Description</th><th>Unit</th><th>Qty</th><th>Rate (₹)</th>${isSupply?'<th>Supply (₹)</th><th>Install (₹)</th>':''}<th>Amount (₹)</th><th></th></tr></thead>
+    <div class="form-row" style="margin-bottom:12px"><label style="color:#1a1a2e">Address</label><input placeholder="Client address" style="color:#1a1a2e;background:#fff;border:1px solid #ddd;border-radius:6px;padding:6px 10px"/></div>
+    <table class="data-table" style="font-size:13px;margin-bottom:8px;background:#fff;color:#1a1a2e">
+      <thead><tr style="background:#1a1a2e;color:#fff"><th>#</th><th>Description</th><th>Unit</th><th>Qty</th><th>Rate (₹)</th>${isSupply?'<th>Supply (₹)</th><th>Install (₹)</th>':''}<th>Amount (₹)</th><th></th></tr></thead>
       <tbody>
         ${window.qtItems.map((it,idx)=>`
         <tr>
-          <td>${idx+1}</td>
-          <td><input style="width:100%;border:none;background:transparent" value="${it.desc}" oninput="window.qtItems[${idx}].desc=this.value"/></td>
-          <td><input style="width:60px;border:none;background:transparent" value="${it.unit}" oninput="window.qtItems[${idx}].unit=this.value"/></td>
-          <td><input type="number" style="width:60px;border:none;background:transparent" value="${it.qty}" oninput="window.qtItems[${idx}].qty=+this.value;window.renderQt()"/></td>
-          <td><input type="number" style="width:80px;border:none;background:transparent" value="${it.rate}" oninput="window.qtItems[${idx}].rate=+this.value;window.renderQt()"/></td>
-          ${isSupply?`<td style="font-weight:700;color:var(--blue)">₹${(it.qty*it.rate*0.6).toFixed(0)}</td><td style="font-weight:700;color:var(--purple)">₹${(it.qty*it.rate*0.4).toFixed(0)}</td>`:''}
-          <td style="font-weight:700;color:var(--navy)">₹${(it.qty*it.rate).toFixed(0)}</td>
-          <td><button onclick="window.qtItems.splice(${idx},1);window.renderQt()" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:16px">✕</button></td>
+          <td style="color:#1a1a2e;text-align:center">${idx+1}</td>
+          <td><input style="width:100%;border:none;background:transparent;color:#1a1a2e;font-size:13px" value="${it.desc.replace(/"/g,'&quot;')}" oninput="window.qtItems[${idx}].desc=this.value" onchange="window.qtItems[${idx}].desc=this.value"/></td>
+          <td><input style="width:60px;border:none;background:transparent;color:#1a1a2e;font-size:13px" value="${it.unit}" oninput="window.qtItems[${idx}].unit=this.value" onchange="window.qtItems[${idx}].unit=this.value"/></td>
+          <td><input type="number" min="0" step="any" style="width:70px;border:1px solid #ddd;border-radius:4px;padding:2px 4px;background:#fff;color:#1a1a2e;font-size:13px" value="${it.qty}" onchange="window.qtItems[${idx}].qty=+this.value;window.updateQtTotals()"/></td>
+          <td><input type="number" min="0" step="any" style="width:90px;border:1px solid #ddd;border-radius:4px;padding:2px 4px;background:#fff;color:#1a1a2e;font-size:13px" value="${it.rate}" onchange="window.qtItems[${idx}].rate=+this.value;window.updateQtTotals()"/></td>
+          ${isSupply?`<td style="font-weight:700;color:#3182ce" id="qt-supply-${idx}">₹${(it.qty*it.rate*0.6).toFixed(0)}</td><td style="font-weight:700;color:#805ad5" id="qt-install-${idx}">₹${(it.qty*it.rate*0.4).toFixed(0)}</td>`:''}
+          <td style="font-weight:700;color:#1a1a2e" id="qt-amt-${idx}">₹${(it.qty*it.rate).toLocaleString('en-IN')}</td>
+          <td><button onclick="window.qtItems.splice(${idx},1);window.renderQt()" style="border:none;background:none;color:#e53e3e;cursor:pointer;font-size:16px">✕</button></td>
         </tr>`).join('')}
       </tbody>
     </table>
     <button class="btn-secondary btn-xs" onclick="window.qtItems.push({desc:'',qty:1,unit:'Lot',rate:0});window.renderQt()">+ Add Row</button>
-    <div style="text-align:right;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-      <div style="margin-bottom:4px">Subtotal: <strong>₹${total.toLocaleString('en-IN')}</strong></div>
-      <div style="margin-bottom:4px">GST @18%: <strong>₹${gst.toLocaleString('en-IN')}</strong></div>
-      <div style="font-size:18px;font-weight:900;color:var(--navy)">Grand Total: <span id="qt-grand-total">₹${(total+gst).toLocaleString('en-IN')}</span></div>
+    <div style="text-align:right;margin-top:12px;padding-top:12px;border-top:2px solid #e2e8f0">
+      <div style="margin-bottom:4px;color:#1a1a2e">Subtotal: <strong id="qt-subtotal">₹${total.toLocaleString('en-IN')}</strong></div>
+      <div style="margin-bottom:4px;color:#1a1a2e">GST @18%: <strong id="qt-gst-amt">₹${gst.toLocaleString('en-IN')}</strong></div>
+      <div style="font-size:18px;font-weight:900;color:#1a1a2e">Grand Total: <span id="qt-grand-total">₹${(total+gst).toLocaleString('en-IN')}</span></div>
     </div>
     <div class="row2" style="margin-top:12px">
-      <div class="form-row"><label>Validity</label><input value="30 days"/></div>
-      <div class="form-row"><label>Payment Terms</label><input value="30% advance, balance on delivery"/></div>
+      <div class="form-row"><label style="color:#1a1a2e">Validity</label><input style="color:#1a1a2e;background:#fff;border:1px solid #ddd;border-radius:6px;padding:6px 10px" value="30 days"/></div>
+      <div class="form-row"><label style="color:#1a1a2e">Payment Terms</label><input style="color:#1a1a2e;background:#fff;border:1px solid #ddd;border-radius:6px;padding:6px 10px" value="30% advance, balance on delivery"/></div>
     </div>
-    <div class="form-row"><label>Terms & Conditions</label><textarea rows="3" placeholder="Scope inclusions, exclusions...">1. Taxes extra as applicable\n2. Price variation clause as per market\n3. Work to be done during client site working hours</textarea></div>
+    <div class="form-row"><label style="color:#1a1a2e">Terms &amp; Conditions</label><textarea rows="3" style="color:#1a1a2e;background:#fff;border:1px solid #ddd;border-radius:6px;padding:8px 10px;width:100%;font-size:13px" placeholder="Scope inclusions, exclusions...">1. Taxes extra as applicable
+2. Price variation clause as per market
+3. Work to be done during client site working hours</textarea></div>
     <div class="btn-row" style="margin-top:12px">
       <button class="btn-primary" onclick="saveQuotation('${qNo}')">💾 Save Quotation</button>
       <button class="btn-secondary" onclick="downloadQuotationPDF()">📄 Download PDF</button>
-      <button class="btn-secondary" onclick="showToast('Sent via email','success')">📧 Send to Client</button>
+      <button class="btn-secondary" onclick="sendQuotationEmail('${qNo}')">📧 Send to Client</button>
     </div>`;
   };
   c.innerHTML=`
@@ -6434,8 +6473,69 @@ function pageQuotation(){
       <span style="color:var(--text2);font-size:12px;margin-left:8px">Quote No: <strong>${qNo}</strong></span>
     </div>
   </div>
-  <div class="card"><div id="qt-body"></div></div>`;
+  <div class="card" style="background:#fff;color:#1a1a2e"><div id="qt-body"></div></div>`;
   window.renderQt();
+}
+// Update totals in-place without re-rendering the whole table (fixes 1-digit input bug)
+window.updateQtTotals=function(){
+  const isSupply=window.qtMode==='supply';
+  let total=0;
+  window.qtItems.forEach((it,idx)=>{
+    const amt=it.qty*it.rate;
+    total+=amt;
+    const aEl=document.getElementById('qt-amt-'+idx);
+    if(aEl)aEl.textContent='₹'+amt.toLocaleString('en-IN');
+    if(isSupply){
+      const sEl=document.getElementById('qt-supply-'+idx);
+      const iEl=document.getElementById('qt-install-'+idx);
+      if(sEl)sEl.textContent='₹'+(amt*0.6).toFixed(0);
+      if(iEl)iEl.textContent='₹'+(amt*0.4).toFixed(0);
+    }
+  });
+  const gst=total*0.18;
+  const subEl=document.getElementById('qt-subtotal');
+  const gstEl=document.getElementById('qt-gst-amt');
+  const gtEl=document.getElementById('qt-grand-total');
+  if(subEl)subEl.textContent='₹'+total.toLocaleString('en-IN');
+  if(gstEl)gstEl.textContent='₹'+gst.toLocaleString('en-IN');
+  if(gtEl)gtEl.textContent='₹'+(total+gst).toLocaleString('en-IN');
+};
+function sendQuotationEmail(qNo){
+  const client=document.getElementById('qt-client')?.value||'';
+  const total=window.qtItems.reduce((s,i)=>s+i.qty*i.rate,0);
+  const grandTotal=(total*1.18).toLocaleString('en-IN');
+  openModal('📧 Send Quotation to Client',`
+    <div class="eod-form">
+      <div class="form-row"><label>Client Email Address</label><input id="qt-email" type="email" placeholder="client@example.com" style="border:1px solid #ddd;border-radius:6px;padding:8px 10px;width:100%"/></div>
+      <div class="form-row"><label>Subject</label><input id="qt-subject" value="Quotation ${qNo} from 1WorldCrafts" style="border:1px solid #ddd;border-radius:6px;padding:8px 10px;width:100%"/></div>
+      <div class="form-row"><label>Message</label><textarea id="qt-msg" rows="5" style="border:1px solid #ddd;border-radius:6px;padding:8px 10px;width:100%;font-size:13px">Dear ${client||'Sir/Madam'},
+
+Please find attached our quotation ${qNo} for your kind consideration.
+
+Quotation Value: ₹${grandTotal} (incl. 18% GST)
+
+Please feel free to reach out for any clarifications.
+
+Warm regards,
+1WorldCrafts</textarea></div>
+      <div style="background:#fff8e1;border:1px solid #f6c90e;border-radius:6px;padding:10px;font-size:12px;color:#7d6608;margin-top:8px">
+        ⚠️ This will open your default email app (Outlook / Gmail) with the message pre-filled. You will need to <strong>attach the PDF manually</strong> before sending. First download the PDF using the Download PDF button.
+      </div>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn-primary" onclick="openEmailClient()">Open in Email App</button>
+        <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      </div>
+    </div>`);
+}
+function openEmailClient(){
+  const to=document.getElementById('qt-email')?.value||'';
+  const subject=document.getElementById('qt-subject')?.value||'Quotation from 1WorldCrafts';
+  const body=document.getElementById('qt-msg')?.value||'';
+  if(!to){showToast('Please enter client email address','info');return;}
+  const mailto=`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.open(mailto,'_self');
+  closeModal();
+  showToast('Email app opened — attach the PDF before sending','success');
 }
 // ===================== HELPER FUNCTIONS =====================
 function switchTab(el,groupClass,targetId){
