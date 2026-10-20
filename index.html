@@ -5067,18 +5067,13 @@ function pageAIFeedback(){
 // ═══════════════════════════════════════════════════════
 window.PT_DATA={};  // {siteCode: {tasks:[...]}}
 window.PT_SITE='';  // currently selected site
+window._ptListeners={};  // {siteCode: unsubscribe fn} — real-time listeners
 
-window.fbLoadTimeline=async function(siteCode){
-  try{
-    const doc=await db.collection('project_timelines').doc(siteCode).get();
-    if(doc.exists)return doc.data();
-    return null;
-  }catch(e){console.error('Timeline load failed',e);return null;}
-};
 window.fbSaveTimeline=async function(siteCode,data){
   try{
-    await db.collection('project_timelines').doc(siteCode).set({
-      ...data,
+    if(!window.fbDb)return false;
+    await window.fbDb.collection('project_timelines').doc(siteCode).set({
+      tasks:data.tasks||[],
       updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
       updatedBy:window.CU||'unknown'
     });
@@ -5086,22 +5081,49 @@ window.fbSaveTimeline=async function(siteCode,data){
   }catch(e){console.error('Timeline save failed',e);return false;}
 };
 
+// Subscribe to real-time updates for a site's timeline
+function ptSubscribe(code){
+  if(!code||!window.fbDb)return;
+  // Already listening — skip
+  if(window._ptListeners[code])return;
+  const unsub=window.fbDb.collection('project_timelines').doc(code).onSnapshot(doc=>{
+    if(doc.exists){
+      const d=doc.data();
+      if(d&&Array.isArray(d.tasks)){
+        // Only update if this came from another device (updatedBy !== CU or no suppress)
+        const fromOther=(d.updatedBy&&d.updatedBy!==window.CU);
+        const notSuppressed=(Date.now()>=window._suppressRefreshUntil);
+        if(fromOther||notSuppressed){
+          window.PT_DATA[code]={tasks:d.tasks};
+          try{localStorage.setItem('1wc_pt_'+code,JSON.stringify({tasks:d.tasks}));}catch(e){}
+          if(window.PT_SITE===code&&window._currentPage==='execution')ptRender();
+        }
+      }
+    }
+  },e=>console.log('PT listener error:',e));
+  window._ptListeners[code]=unsub;
+}
+
+// Unsubscribe when switching away from a site (saves Firestore reads)
+function ptUnsubscribe(code){
+  if(window._ptListeners[code]){window._ptListeners[code]();delete window._ptListeners[code];}
+}
+
 function ptGetSiteData(code){
   return window.PT_DATA[code]||{tasks:[]};
 }
 function ptSave(code){
+  suppressRefreshFor(4000);
   const data=window.PT_DATA[code]||{tasks:[]};
   try{localStorage.setItem('1wc_pt_'+code,JSON.stringify(data));}catch(e){}
   if(window.fbSaveTimeline)window.fbSaveTimeline(code,data);
 }
 function ptLoad(code){
+  if(!code)return;
+  // Load from localStorage immediately for instant render
   try{const s=localStorage.getItem('1wc_pt_'+code);if(s)window.PT_DATA[code]=JSON.parse(s);}catch(e){}
-  // async cloud refresh
-  if(window.fbLoadTimeline){
-    window.fbLoadTimeline(code).then(d=>{
-      if(d&&d.tasks){window.PT_DATA[code]=d;ptRender();}
-    });
-  }
+  // Subscribe to real-time Firestore updates (replaces one-shot get)
+  ptSubscribe(code);
 }
 function ptUid(){return 'pt_'+Date.now()+'_'+Math.random().toString(36).substr(2,6);}
 
